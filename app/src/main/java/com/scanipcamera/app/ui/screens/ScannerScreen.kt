@@ -1,11 +1,13 @@
 package com.scanipcamera.app.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -13,6 +15,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -438,28 +441,37 @@ fun ScannerScreen(
                 FilterChip(
                     selected = selectedCategoryFilter == null,
                     onClick = { viewModel.setCategoryFilter(null) },
-                    label = { Text("Tất cả loại (${devices.size})", fontSize = 11.sp) }
+                    label = { Text("Tất cả (${devices.size})", fontSize = 11.sp) }
                 )
                 FilterChip(
                     selected = selectedCategoryFilter == DeviceCategory.CAMERA,
                     onClick = {
                         viewModel.setCategoryFilter(if (selectedCategoryFilter == DeviceCategory.CAMERA) null else DeviceCategory.CAMERA)
                     },
-                    label = { Text("📹 Camera IP", fontSize = 11.sp) }
+                    leadingIcon = {
+                        Icon(Icons.Default.Videocam, contentDescription = null, modifier = Modifier.size(14.dp))
+                    },
+                    label = { Text("Camera IP", fontSize = 11.sp) }
                 )
                 FilterChip(
                     selected = selectedCategoryFilter == DeviceCategory.NVR,
                     onClick = {
                         viewModel.setCategoryFilter(if (selectedCategoryFilter == DeviceCategory.NVR) null else DeviceCategory.NVR)
                     },
-                    label = { Text("🖥️ Đầu ghi NVR", fontSize = 11.sp) }
+                    leadingIcon = {
+                        Icon(Icons.Default.Storage, contentDescription = null, modifier = Modifier.size(14.dp))
+                    },
+                    label = { Text("Đầu ghi NVR", fontSize = 11.sp) }
                 )
                 FilterChip(
                     selected = selectedCategoryFilter == DeviceCategory.DVR,
                     onClick = {
                         viewModel.setCategoryFilter(if (selectedCategoryFilter == DeviceCategory.DVR) null else DeviceCategory.DVR)
                     },
-                    label = { Text("📼 Đầu ghi DVR / XVR", fontSize = 11.sp) }
+                    leadingIcon = {
+                        Icon(Icons.Default.Dns, contentDescription = null, modifier = Modifier.size(14.dp))
+                    },
+                    label = { Text("Đầu ghi DVR / XVR", fontSize = 11.sp) }
                 )
             }
 
@@ -483,6 +495,14 @@ fun ScannerScreen(
                         onClick = {
                             viewModel.setBrandFilter(
                                 if (selectedBrandFilter == brand) null else brand
+                            )
+                        },
+                        leadingIcon = {
+                            Box(
+                                modifier = Modifier
+                                    .size(8.dp)
+                                    .clip(androidx.compose.foundation.shape.CircleShape)
+                                    .background(brand.badgeColor)
                             )
                         },
                         label = { Text(brand.displayName, fontSize = 11.sp) }

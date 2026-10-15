@@ -29,8 +29,7 @@ import androidx.compose.ui.unit.sp
 import com.scanipcamera.app.data.model.CameraDevice
 import com.scanipcamera.app.data.model.DeviceCategory
 import com.scanipcamera.app.data.network.NetworkUtils
-import com.scanipcamera.app.ui.theme.StatusInactive
-import com.scanipcamera.app.ui.theme.SubnetMismatchColor
+import com.scanipcamera.app.ui.theme.*
 
 @Composable
 fun DeviceCard(
@@ -54,15 +53,16 @@ fun DeviceCard(
 
     val isRecorder = (device.category == DeviceCategory.NVR || device.category == DeviceCategory.DVR)
 
-    // Primary badge color matching ConfigTool Mobile (Coral for Camera, Blue/Cyan for XVR/DVR)
-    val badgeTopColor = if (isRecorder) Color(0xFF0091EA) else Color(0xFFFF6D00)
-    val badgeBottomColor = if (isRecorder) Color(0xFF40C4FF) else Color(0xFFFFAB40)
+    // Palette tokens according to UI UX Pro Max standards
+    val badgeTopColor = if (isRecorder) Color(0xFF0284C7) else Color(0xFFEA580C)
+    val badgeBottomColor = if (isRecorder) Color(0xFF38BDF8) else Color(0xFFF97316)
 
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(10.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f))
     ) {
         Row(
             modifier = Modifier
@@ -73,7 +73,7 @@ fun DeviceCard(
             // Left block: ConfigTool Mobile style (Model on top, Ports on bottom)
             Column(
                 modifier = Modifier
-                    .width(82.dp)
+                    .width(84.dp)
                     .fillMaxHeight(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -123,23 +123,43 @@ fun DeviceCard(
                 }
             }
 
-            // Center block: IP Address, MAC, S/N
+            // Center block: IP Address, MAC, S/N, and Badges
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                    .padding(horizontal = 10.dp, vertical = 8.dp)
             ) {
-                // Big Bold IP
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // Row 1: Big Bold IP & Status Badges
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
                     Text(
                         text = device.ipv4Address,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp,
+                        fontSize = 15.sp,
                         fontFamily = FontFamily.Monospace,
                         color = MaterialTheme.colorScheme.onSurface
                     )
+
+                    if (device.channelCount > 0) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Surface(
+                            color = Color(0xFF0284C7).copy(alpha = 0.15f),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                text = "${device.channelCount} CH",
+                                color = Color(0xFF0284C7),
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
+
                     if (!isSameSubnet && phoneIp.isNotBlank()) {
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                         Surface(
                             color = SubnetMismatchColor.copy(alpha = 0.15f),
                             shape = RoundedCornerShape(4.dp)
@@ -153,6 +173,7 @@ fun DeviceCard(
                             )
                         }
                     }
+
                     if (!device.isActivated) {
                         Spacer(modifier = Modifier.width(4.dp))
                         Surface(
@@ -170,15 +191,11 @@ fun DeviceCard(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(3.dp))
 
-                // MAC Address (Clickable to copy)
-                Text(
-                    text = "MAC: ${device.macAddress.ifEmpty { "Chưa có MAC" }}",
-                    fontSize = 12.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Medium,
-                    color = Color(0xFF616161),
+                // Row 2: MAC Address (Interactive click to copy)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.clickable {
                         if (device.macAddress.isNotBlank()) {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -188,15 +205,21 @@ fun DeviceCard(
                             onDiagnosticClick()
                         }
                     }
-                )
+                ) {
+                    Text(
+                        text = "MAC: ${device.macAddress.ifEmpty { "Chưa có MAC" }}",
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
 
-                // Serial Number (Highlighted in bright cyan/blue, clickable to copy)
-                Text(
-                    text = "S/N: ${device.serialNumber.ifEmpty { "N/A" }}",
-                    fontSize = 12.sp,
-                    fontFamily = FontFamily.Monospace,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF0288D1),
+                Spacer(modifier = Modifier.height(2.dp))
+
+                // Row 3: Serial Number (Highlighted in bright cyan/blue, interactive click to copy)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.clickable {
                         if (device.serialNumber.isNotBlank()) {
                             val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
@@ -206,49 +229,57 @@ fun DeviceCard(
                             onDiagnosticClick()
                         }
                     }
-                )
+                ) {
+                    Text(
+                        text = "S/N: ${device.serialNumber.ifEmpty { "N/A" }}",
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF0284C7)
+                    )
+                }
             }
 
-            // Right block: 2x2 Circular action buttons like ConfigTool Mobile
+            // Right block: 2x2 Circular action buttons with distinctive semantic colors
             Column(
-                modifier = Modifier.padding(end = 10.dp, top = 6.dp, bottom = 6.dp),
+                modifier = Modifier.padding(end = 8.dp, top = 6.dp, bottom = 6.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     // 1. Edit IP (Pencil)
                     IconButton(
                         onClick = onConfigureClick,
                         modifier = Modifier
                             .size(32.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF0288D1))
+                            .background(Color(0xFF0284C7))
                     ) {
                         Icon(
                             imageVector = Icons.Default.Edit,
                             contentDescription = "Đổi IP",
                             tint = Color.White,
-                            modifier = Modifier.size(17.dp)
+                            modifier = Modifier.size(16.dp)
                         )
                     }
 
-                    // 2. Settings / Advanced Config (Gear)
+                    // 2. Settings / Test Port WAN (Gear)
                     IconButton(
                         onClick = onWanPortClick,
                         modifier = Modifier
                             .size(32.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF0288D1))
+                            .background(Color(0xFF0D9488))
                     ) {
                         Icon(
                             imageVector = Icons.Default.Settings,
                             contentDescription = "Test Port WAN / Cài đặt",
                             tint = Color.White,
-                            modifier = Modifier.size(17.dp)
+                            modifier = Modifier.size(16.dp)
                         )
                     }
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     // 3. Info / Details & Diagnostics (Info icon)
                     Box {
                         IconButton(
@@ -256,13 +287,13 @@ fun DeviceCard(
                             modifier = Modifier
                                 .size(32.dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFF0288D1))
+                                .background(Color(0xFF475569))
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Info,
-                                contentDescription = "Chi tiết",
+                                contentDescription = "Menu chức năng",
                                 tint = Color.White,
-                                modifier = Modifier.size(17.dp)
+                                modifier = Modifier.size(16.dp)
                             )
                         }
 
@@ -328,13 +359,13 @@ fun DeviceCard(
                         modifier = Modifier
                             .size(32.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF0288D1))
+                            .background(Color(0xFF2563EB))
                     ) {
                         Icon(
                             imageVector = Icons.Default.Language,
                             contentDescription = "Mở Web",
                             tint = Color.White,
-                            modifier = Modifier.size(17.dp)
+                            modifier = Modifier.size(16.dp)
                         )
                     }
                 }
