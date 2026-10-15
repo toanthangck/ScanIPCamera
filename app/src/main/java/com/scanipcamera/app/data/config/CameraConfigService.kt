@@ -1,5 +1,7 @@
 package com.scanipcamera.app.data.config
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.util.Base64
 import android.util.Log
 import com.scanipcamera.app.data.model.CameraDevice
@@ -11,6 +13,7 @@ import java.io.InputStreamReader
 import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
+import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -58,7 +61,63 @@ class CameraConfigService {
     }
 
     /**
-     * Send HTTP GET request with Basic/Digest authentication fallback
+     * Compute HTTP Digest Authorization header (RFC 2617)
+     */
+    private fun computeDigestHeader(
+        method: String,
+        uri: String,
+        authHeader: String,
+        user: String,
+        pass: String
+    ): String {
+        fun md5(s: String): String {
+            val md = MessageDigest.getInstance("MD5")
+            val digest = md.digest(s.toByteArray(Charsets.UTF_8))
+            return digest.joinToString("") { "%02x".format(it) }
+        }
+
+        fun extractParam(key: String): String {
+            val pattern = Regex("""$key="?([^",\s]+)"?""", RegexOption.IGNORE_CASE)
+            return pattern.find(authHeader)?.groups?.get(1)?.value ?: ""
+        }
+
+        val realm = extractParam("realm")
+        val nonce = extractParam("nonce")
+        val qop = extractParam("qop")
+        val opaque = extractParam("opaque")
+        val algorithm = extractParam("algorithm").ifEmpty { "MD5" }
+
+        val ha1 = md5("$user:$realm:$pass")
+        val ha2 = md5("$method:$uri")
+        val cnonce = "0a4f113b"
+        val nc = "00000001"
+
+        val response = if (qop.contains("auth", ignoreCase = true)) {
+            md5("$ha1:$nonce:$nc:$cnonce:auth:$ha2")
+        } else {
+            md5("$ha1:$nonce:$ha2")
+        }
+
+        val sb = StringBuilder("Digest ")
+        sb.append("username=\"$user\", ")
+        sb.append("realm=\"$realm\", ")
+        sb.append("nonce=\"$nonce\", ")
+        sb.append("uri=\"$uri\", ")
+        sb.append("response=\"$response\"")
+        if (qop.contains("auth", ignoreCase = true)) {
+            sb.append(", qop=auth, nc=$nc, cnonce=\"$cnonce\"")
+        }
+        if (opaque.isNotEmpty()) {
+            sb.append(", opaque=\"$opaque\"")
+        }
+        if (algorithm.isNotEmpty()) {
+            sb.append(", algorithm=$algorithm")
+        }
+        return sb.toString()
+    }
+
+    /**
+     * Send HTTP request with Basic/Digest authentication support
      */
     private fun sendHttpRequest(
         urlString: String,
@@ -69,7 +128,7 @@ class CameraConfigService {
     ): Result<String> {
         return try {
             val url = URL(urlString)
-            val conn = (url.openConnection() as HttpURLConnection).apply {
+            var conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = method
                 connectTimeout = TIMEOUT_MS
                 readTimeout = TIMEOUT_MS
@@ -88,7 +147,35 @@ class CameraConfigService {
                 }
             }
 
-            val responseCode = conn.responseCode
+            var responseCode = conn.responseCode
+
+            // If 401, retry with Digest Auth
+            if (responseCode == 401) {
+                val authHeader = conn.getHeaderField("WWW-Authenticate")
+                if (authHeader != null && authHeader.contains("Digest", ignoreCase = true)) {
+                    val uriPath = url.file.ifEmpty { "/" }
+                    val digestHeader = computeDigestHeader(method, uriPath, authHeader, user, pass)
+                    conn.disconnect()
+                    conn = (url.openConnection() as HttpURLConnection).apply {
+                        requestMethod = method
+                        connectTimeout = TIMEOUT_MS
+                        readTimeout = TIMEOUT_MS
+                        setRequestProperty("Authorization", digestHeader)
+                        if (payload != null) {
+                            doOutput = true
+                            setRequestProperty("Content-Type", "application/x-www-form-urlencoded; charset=utf-8")
+                        }
+                    }
+                    if (payload != null) {
+                        conn.outputStream.use { os ->
+                            os.write(payload.toByteArray(Charsets.UTF_8))
+                            os.flush()
+                        }
+                    }
+                    responseCode = conn.responseCode
+                }
+            }
+
             val isSuccess = responseCode in 200..299
             val stream = if (isSuccess) conn.inputStream else conn.errorStream ?: conn.inputStream
             val response = BufferedReader(InputStreamReader(stream)).use { it.readText() }
@@ -101,6 +188,98 @@ class CameraConfigService {
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    /**
+     * Fetch raw image bytes from camera with Basic/Digest authentication
+     */
+    private fun fetchImageBytes(
+        urlString: String,
+        user: String,
+        pass: String
+    ): Result<ByteArray> {
+        return try {
+            val url = URL(urlString)
+            var conn = (url.openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = 3500
+                readTimeout = 4000
+                val auth = Base64.encodeToString("$user:$pass".toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+                setRequestProperty("Authorization", "Basic $auth")
+            }
+
+            var responseCode = conn.responseCode
+
+            // If 401, check for Digest Auth challenge
+            if (responseCode == 401) {
+                val authHeader = conn.getHeaderField("WWW-Authenticate")
+                if (authHeader != null && authHeader.contains("Digest", ignoreCase = true)) {
+                    val uriPath = url.file.ifEmpty { "/" }
+                    val digestHeader = computeDigestHeader("GET", uriPath, authHeader, user, pass)
+                    conn.disconnect()
+                    conn = (url.openConnection() as HttpURLConnection).apply {
+                        requestMethod = "GET"
+                        connectTimeout = 3500
+                        readTimeout = 4000
+                        setRequestProperty("Authorization", digestHeader)
+                    }
+                    responseCode = conn.responseCode
+                }
+            }
+
+            if (responseCode in 200..299) {
+                val bytes = conn.inputStream.use { it.readBytes() }
+                if (bytes.isNotEmpty()) {
+                    Result.success(bytes)
+                } else {
+                    Result.failure(Exception("Empty snapshot bytes"))
+                }
+            } else {
+                Result.failure(Exception("HTTP $responseCode"))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Fetch Live Real-Time Snapshot from Camera (Dahua, Hikvision, EZVIZ, IMOU, KBVISION, ONVIF)
+     */
+    suspend fun fetchCameraSnapshot(
+        device: CameraDevice,
+        user: String,
+        pass: String
+    ): Result<Bitmap> = withContext(Dispatchers.IO) {
+        val urls = when (device.brand) {
+            DeviceBrand.DAHUA, DeviceBrand.IMOU, DeviceBrand.KBVISION -> listOf(
+                "http://${device.ipv4Address}:${device.httpPort}/cgi-bin/snapshot.cgi?channel=1",
+                "http://${device.ipv4Address}:${device.httpPort}/cgi-bin/snapshot.cgi"
+            )
+            DeviceBrand.HIKVISION, DeviceBrand.EZVIZ -> listOf(
+                "http://${device.ipv4Address}:${device.httpPort}/ISAPI/Streaming/channels/101/picture",
+                "http://${device.ipv4Address}:${device.httpPort}/onvif-http/snapshot?channel=1"
+            )
+            else -> listOf(
+                "http://${device.ipv4Address}:${device.httpPort}/cgi-bin/snapshot.cgi?channel=1",
+                "http://${device.ipv4Address}:${device.httpPort}/ISAPI/Streaming/channels/101/picture",
+                "http://${device.ipv4Address}:${device.httpPort}/images/snapshot.jpg",
+                "http://${device.ipv4Address}:${device.httpPort}/snapshot.jpg"
+            )
+        }
+
+        for (url in urls) {
+            val res = fetchImageBytes(url, user, pass)
+            if (res.isSuccess) {
+                val bytes = res.getOrNull()
+                if (bytes != null && bytes.isNotEmpty()) {
+                    val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                    if (bmp != null) {
+                        return@withContext Result.success(bmp)
+                    }
+                }
+            }
+        }
+        Result.failure(Exception("Không thể tải hình ảnh từ camera. Vui lòng kiểm tra mật khẩu hoặc đường truyền."))
     }
 
     /**

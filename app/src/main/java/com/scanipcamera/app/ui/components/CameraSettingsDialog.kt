@@ -1,7 +1,9 @@
 package com.scanipcamera.app.ui.components
 
+import android.graphics.Bitmap
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -19,19 +21,26 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.scanipcamera.app.data.config.CameraConfigService
 import com.scanipcamera.app.data.config.CameraImageSettings
-import com.scanipcamera.app.data.config.CameraTimeSettings
 import com.scanipcamera.app.data.config.CameraVideoSettings
 import com.scanipcamera.app.data.model.CameraDevice
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,11 +56,18 @@ fun CameraSettingsDialog(
 
     var user by remember { mutableStateOf(defaultUser) }
     var password by remember { mutableStateOf(defaultPass) }
+    var showPassword by remember { mutableStateOf(false) }
+
     var isOperating by remember { mutableStateOf(false) }
     var operationResult by remember { mutableStateOf<String?>(null) }
+    var selectedTab by remember { mutableIntStateOf(0) } // 0: Chống ngược sáng & Màu sắc, 1: Độ phân giải & Video, 2: Xác thực
 
-    // Section states
-    var expandedSection by remember { mutableStateOf<String?>("camera") } // "camera", "video", "ntp", "auth"
+    // Live Snapshot states
+    var snapshotBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var isLoadingSnapshot by remember { mutableStateOf(false) }
+    var snapshotError by remember { mutableStateOf<String?>(null) }
+    var autoRefreshSnapshot by remember { mutableStateOf(false) }
+    var lastSnapshotTime by remember { mutableStateOf("") }
 
     // Image & Backlight states
     var brightness by remember { mutableFloatStateOf(50f) }
@@ -65,13 +81,43 @@ fun CameraSettingsDialog(
     var isFlip by remember { mutableStateOf(false) }
 
     // Video Resolution & Codec states
-    var selectedResolution by remember { mutableStateOf("1920x1080") } // "2560x1440 (2K)", "1920x1080 (Full HD)", "1280x720 (HD)"
-    var selectedCodec by remember { mutableStateOf("H.265") } // "H.265", "H.264", "H.265+"
+    var selectedResolution by remember { mutableStateOf("1920x1080") }
+    var selectedCodec by remember { mutableStateOf("H.265") }
     var selectedFps by remember { mutableIntStateOf(25) }
 
-    // NTP & Time states
-    var ntpServer by remember { mutableStateOf("pool.ntp.org") }
-    var ntpEnabled by remember { mutableStateOf(true) }
+    // Function to load camera snapshot
+    fun refreshSnapshot() {
+        if (password.isBlank()) return
+        isLoadingSnapshot = true
+        snapshotError = null
+        coroutineScope.launch {
+            val res = configService.fetchCameraSnapshot(device, user.trim(), password.trim())
+            isLoadingSnapshot = false
+            if (res.isSuccess) {
+                snapshotBitmap = res.getOrNull()
+                lastSnapshotTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+            } else {
+                snapshotError = res.exceptionOrNull()?.message ?: "Lỗi tải ảnh"
+            }
+        }
+    }
+
+    // Auto-refresh timer loop
+    LaunchedEffect(autoRefreshSnapshot) {
+        while (autoRefreshSnapshot) {
+            delay(2500)
+            val res = configService.fetchCameraSnapshot(device, user.trim(), password.trim())
+            if (res.isSuccess) {
+                snapshotBitmap = res.getOrNull()
+                lastSnapshotTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+            }
+        }
+    }
+
+    // Initial snapshot fetch
+    LaunchedEffect(Unit) {
+        refreshSnapshot()
+    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -80,7 +126,7 @@ fun CameraSettingsDialog(
         Surface(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 8.dp, vertical = 16.dp),
+                .padding(horizontal = 6.dp, vertical = 12.dp),
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 6.dp
@@ -91,13 +137,13 @@ fun CameraSettingsDialog(
                     title = {
                         Column {
                             Text(
-                                text = "Cài đặt thiết bị",
+                                text = "Cài Đặt Hình Ảnh & Ngược Sáng",
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 16.sp
+                                fontSize = 15.5.sp
                             )
                             Text(
-                                text = "${device.model.ifEmpty { device.brand.displayName }} (${device.ipv4Address})",
-                                fontSize = 11.5.sp,
+                                text = "${device.brand.displayName} • ${device.ipv4Address}:${device.httpPort} (${device.model.ifEmpty { "Camera IP" }})",
+                                fontSize = 11.sp,
                                 fontFamily = FontFamily.Monospace,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -108,6 +154,11 @@ fun CameraSettingsDialog(
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Quay lại")
                         }
                     },
+                    actions = {
+                        IconButton(onClick = { refreshSnapshot() }) {
+                            Icon(Icons.Default.Refresh, contentDescription = "Làm mới ảnh")
+                        }
+                    },
                     colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
                 )
 
@@ -116,168 +167,550 @@ fun CameraSettingsDialog(
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(8.dp),
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
                         color = Color(0xFF0284C7).copy(alpha = 0.15f),
                         shape = RoundedCornerShape(8.dp)
                     ) {
                         Row(
-                            modifier = Modifier.padding(10.dp),
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(Icons.Default.CheckCircle, contentDescription = null, tint = Color(0xFF0284C7), modifier = Modifier.size(16.dp))
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text(msg, fontSize = 12.sp, color = Color(0xFF0284C7), fontWeight = FontWeight.SemiBold)
+                            Text(msg, fontSize = 11.5.sp, color = Color(0xFF0284C7), fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
 
-                // Scrollable Setting Sections
                 Column(
                     modifier = Modifier
                         .weight(1f)
                         .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    // Quick Action: Time Sync to Phone button
+                    // ==========================================
+                    // 1. LIVE CAMERA VIEWFINDER / SNAPSHOT BOX
+                    // (Replaces the old redundant time sync banner)
+                    // ==========================================
                     Card(
-                        colors = CardDefaults.cardColors(containerColor = Color(0xFF0284C7).copy(alpha = 0.12f)),
-                        shape = RoundedCornerShape(10.dp),
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = Color(0xFF0B132B)),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1E293B))
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                                Icon(Icons.Default.AccessTime, contentDescription = null, tint = Color(0xFF0284C7), modifier = Modifier.size(24.dp))
-                                Spacer(modifier = Modifier.width(10.dp))
-                                Column {
-                                    Text("Đồng bộ giờ điện thoại", fontWeight = FontWeight.Bold, fontSize = 13.sp, color = MaterialTheme.colorScheme.onSurface)
-                                    Text("Khắc phục lỗi camera về năm 1970/2000", fontSize = 10.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                }
-                            }
-
-                            FilledTonalButton(
-                                onClick = {
-                                    isOperating = true
-                                    coroutineScope.launch {
-                                        val res = configService.syncCameraTimeToPhone(device, user, password)
-                                        isOperating = false
-                                        operationResult = res.getOrNull() ?: res.exceptionOrNull()?.message
-                                        Toast.makeText(context, operationResult, Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                                enabled = !isOperating,
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
-                                modifier = Modifier.height(34.dp)
+                        Column {
+                            // Viewfinder Screen
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .aspectRatio(16f / 9f)
+                                    .background(Color(0xFF020617)),
+                                contentAlignment = Alignment.Center
                             ) {
-                                Text("Đồng bộ ngay", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                if (snapshotBitmap != null) {
+                                    Image(
+                                        bitmap = snapshotBitmap!!.asImageBitmap(),
+                                        contentDescription = "Live Camera Snapshot",
+                                        modifier = Modifier.fillMaxSize(),
+                                        contentScale = ContentScale.Crop
+                                    )
+                                } else if (isLoadingSnapshot) {
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                        CircularProgressIndicator(
+                                            modifier = Modifier.size(28.dp),
+                                            color = Color(0xFF00E5FF),
+                                            strokeWidth = 2.5.dp
+                                        )
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(
+                                            text = "Đang nạp hình ảnh từ camera...",
+                                            fontSize = 11.sp,
+                                            color = Color(0xFF94A3B8)
+                                        )
+                                    }
+                                } else {
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        modifier = Modifier.padding(16.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Videocam,
+                                            contentDescription = null,
+                                            tint = Color(0xFF64748B),
+                                            modifier = Modifier.size(36.dp)
+                                        )
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Text(
+                                            text = snapshotError ?: "Chưa có hình ảnh trực tiếp",
+                                            fontSize = 11.sp,
+                                            color = Color(0xFF94A3B8)
+                                        )
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Button(
+                                            onClick = { refreshSnapshot() },
+                                            modifier = Modifier.height(32.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                                        ) {
+                                            Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Tải hình ảnh Camera", fontSize = 11.sp)
+                                        }
+                                    }
+                                }
+
+                                // Overlay: Top Badges
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .align(Alignment.TopCenter)
+                                        .background(Color(0x88000000))
+                                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = if (snapshotBitmap != null) Color(0xFFEF4444) else Color(0xFF64748B),
+                                            modifier = Modifier.size(8.dp)
+                                        ) {}
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = if (lastSnapshotTime.isNotEmpty()) "TRỰC TIẾP • $lastSnapshotTime" else "HÌNH ẢNH CAMERA",
+                                            fontSize = 10.5.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color.White
+                                        )
+                                    }
+
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        // Auto refresh toggle
+                                        Surface(
+                                            onClick = { autoRefreshSnapshot = !autoRefreshSnapshot },
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = if (autoRefreshSnapshot) Color(0xFF10B981) else Color(0x66FFFFFF),
+                                            modifier = Modifier.height(22.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(
+                                                    imageVector = if (autoRefreshSnapshot) Icons.Default.Check else Icons.Default.Bolt,
+                                                    contentDescription = null,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(11.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(2.dp))
+                                                Text(
+                                                    text = if (autoRefreshSnapshot) "Auto: Bật" else "Auto: Tắt",
+                                                    fontSize = 9.5.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color.White
+                                                )
+                                            }
+                                        }
+
+                                        // Manual refresh
+                                        Surface(
+                                            onClick = { refreshSnapshot() },
+                                            shape = RoundedCornerShape(4.dp),
+                                            color = Color(0x66FFFFFF),
+                                            modifier = Modifier.height(22.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Icon(Icons.Default.Refresh, contentDescription = null, tint = Color.White, modifier = Modifier.size(11.dp))
+                                                Spacer(modifier = Modifier.width(2.dp))
+                                                Text("Làm mới", fontSize = 9.5.sp, color = Color.White)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Overlay: Bottom IP Bar
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .align(Alignment.BottomCenter)
+                                        .background(Color(0x99000000))
+                                        .padding(horizontal = 10.dp, vertical = 3.dp)
+                                ) {
+                                    Text(
+                                        text = "IP: ${device.ipv4Address} • WDR: $selectedWdrMode • Màu: $dayNightMode • Sáng: ${brightness.toInt()}",
+                                        fontSize = 10.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        color = Color(0xFFE2E8F0)
+                                    )
+                                }
                             }
                         }
                     }
 
-                    // SECTION 1: CAMERA (HÌNH ẢNH, CHỐNG NGƯỢC SÁNG, XOAY LẬT)
-                    SettingAccordionHeader(
-                        title = "Camera & Hình ảnh",
-                        subtitle = "Chống ngược sáng (WDR/BLC), Ngày - Đêm, Xoay lật",
-                        icon = Icons.Default.CameraAlt,
-                        isExpanded = expandedSection == "camera",
-                        onClick = { expandedSection = if (expandedSection == "camera") null else "camera" }
-                    )
+                    // Navigation Tabs
+                    PrimaryTabRow(
+                        selectedTabIndex = selectedTab,
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+                        modifier = Modifier.clip(RoundedCornerShape(8.dp))
+                    ) {
+                        Tab(
+                            selected = selectedTab == 0,
+                            onClick = { selectedTab = 0 },
+                            text = { Text("Ngược Sáng & Màu", fontSize = 11.5.sp, fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal) },
+                            icon = { Icon(Icons.Default.WbSunny, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                        )
+                        Tab(
+                            selected = selectedTab == 1,
+                            onClick = { selectedTab = 1 },
+                            text = { Text("Độ Phân Giải", fontSize = 11.5.sp, fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal) },
+                            icon = { Icon(Icons.Default.Hd, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                        )
+                        Tab(
+                            selected = selectedTab == 2,
+                            onClick = { selectedTab = 2 },
+                            text = { Text("Mật Khẩu", fontSize = 11.5.sp, fontWeight = if (selectedTab == 2) FontWeight.Bold else FontWeight.Normal) },
+                            icon = { Icon(Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(16.dp)) }
+                        )
+                    }
 
-                    AnimatedVisibility(visible = expandedSection == "camera") {
+                    // TAB 0: CHỐNG NGƯỢC SÁNG & ĐIỀU CHỈNH HÌNH ẢNH
+                    if (selectedTab == 0) {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                // 1. Backlight / WDR mode
-                                Text("Chế độ Ngược sáng (Backlight / WDR):", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    listOf("Tắt" to "Off", "WDR Thực" to "WDR", "Bù sáng BLC" to "BLC", "Chống lóa HLC" to "HLC").forEach { (label, value) ->
-                                        FilterChip(
-                                            selected = selectedWdrMode == value,
-                                            onClick = { selectedWdrMode = value },
-                                            label = { Text(label, fontSize = 10.5.sp) },
-                                            modifier = Modifier.weight(1f).height(30.dp)
-                                        )
-                                    }
-                                }
-
-                                if (selectedWdrMode == "WDR") {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text("Mức độ WDR: ${wdrLevel.toInt()}%", fontSize = 11.sp, modifier = Modifier.width(110.dp))
-                                        Slider(
-                                            value = wdrLevel,
-                                            onValueChange = { wdrLevel = it },
-                                            valueRange = 0f..100f,
-                                            modifier = Modifier.weight(1f)
-                                        )
-                                    }
-                                }
-
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-
-                                // 2. Day / Night mode
-                                Text("Chế độ Ngày - Đêm (Day / Night):", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    listOf("Tự động (Auto ICR)" to "Auto", "Màu sắc (Color)" to "Color", "Trắng đen (Night)" to "Night").forEach { (label, value) ->
-                                        FilterChip(
-                                            selected = dayNightMode == value,
-                                            onClick = { dayNightMode = value },
-                                            label = { Text(label, fontSize = 10.5.sp) },
-                                            modifier = Modifier.weight(1f).height(30.dp)
-                                        )
-                                    }
-                                }
-
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-
-                                // 3. Flip & Mirror
-                                Text("Xoay - Đối xứng (Flip / Mirror):", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    FilterChip(
-                                        selected = isMirror,
-                                        onClick = { isMirror = !isMirror },
-                                        label = { Text("Lật gương ngang (Mirror)", fontSize = 11.sp) },
-                                        modifier = Modifier.weight(1f).height(32.dp)
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(12.dp)
+                            ) {
+                                // 1. Backlight / WDR Mode (Redesigned with spacious 2x2 grid)
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(
+                                        text = "Chế độ Ngược sáng (Backlight / WDR):",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
                                     )
-                                    FilterChip(
-                                        selected = isFlip,
-                                        onClick = { isFlip = !isFlip },
-                                        label = { Text("Lật dọc (Flip 180°)", fontSize = 11.sp) },
-                                        modifier = Modifier.weight(1f).height(32.dp)
+
+                                    val wdrOptions = listOf(
+                                        Triple("Tắt (Off)", "Tiêu chuẩn ban ngày", "Off"),
+                                        Triple("WDR Thực", "Chống ngược sáng", "WDR"),
+                                        Triple("Bù sáng BLC", "Tăng sáng trung tâm", "BLC"),
+                                        Triple("Chống lóa HLC", "Giảm lóa đèn pha", "HLC")
                                     )
+
+                                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            wdrOptions.take(2).forEach { (title, subtitle, value) ->
+                                                val isSelected = selectedWdrMode == value
+                                                Surface(
+                                                    onClick = { selectedWdrMode = value },
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                                                    border = androidx.compose.foundation.BorderStroke(
+                                                        1.2.dp,
+                                                        if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                                                    ),
+                                                    modifier = Modifier.weight(1f).height(46.dp)
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(horizontal = 8.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        RadioButton(
+                                                            selected = isSelected,
+                                                            onClick = { selectedWdrMode = value },
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                        Column {
+                                                            Text(
+                                                                text = title,
+                                                                fontSize = 11.sp,
+                                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                                                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                                            )
+                                                            Text(
+                                                                text = subtitle,
+                                                                fontSize = 9.sp,
+                                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            wdrOptions.drop(2).forEach { (title, subtitle, value) ->
+                                                val isSelected = selectedWdrMode == value
+                                                Surface(
+                                                    onClick = { selectedWdrMode = value },
+                                                    shape = RoundedCornerShape(8.dp),
+                                                    color = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                                                    border = androidx.compose.foundation.BorderStroke(
+                                                        1.2.dp,
+                                                        if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                                                    ),
+                                                    modifier = Modifier.weight(1f).height(46.dp)
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.padding(horizontal = 8.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        RadioButton(
+                                                            selected = isSelected,
+                                                            onClick = { selectedWdrMode = value },
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                        Column {
+                                                            Text(
+                                                                text = title,
+                                                                fontSize = 11.sp,
+                                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                                                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                                            )
+                                                            Text(
+                                                                text = subtitle,
+                                                                fontSize = 9.sp,
+                                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // WDR Level Slider
+                                    if (selectedWdrMode == "WDR") {
+                                        Surface(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = MaterialTheme.colorScheme.surface,
+                                            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                                        ) {
+                                            Column(modifier = Modifier.padding(10.dp)) {
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text("Cường độ chống ngược sáng (WDR):", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                                    Surface(
+                                                        shape = RoundedCornerShape(4.dp),
+                                                        color = MaterialTheme.colorScheme.primary,
+                                                        modifier = Modifier.padding(2.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = "${wdrLevel.toInt()}%",
+                                                            fontSize = 11.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = MaterialTheme.colorScheme.onPrimary,
+                                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 1.dp)
+                                                        )
+                                                    }
+                                                }
+                                                Slider(
+                                                    value = wdrLevel,
+                                                    onValueChange = { wdrLevel = it },
+                                                    valueRange = 0f..100f,
+                                                    modifier = Modifier.fillMaxWidth()
+                                                )
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    listOf(25f, 50f, 75f, 100f).forEach { step ->
+                                                        SuggestionChip(
+                                                            onClick = { wdrLevel = step },
+                                                            label = { Text("${step.toInt()}%", fontSize = 9.5.sp) },
+                                                            modifier = Modifier.height(24.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
 
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
-                                // 4. Brightness & Contrast sliders
-                                Text("Điều chỉnh hình ảnh cơ bản:", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
-                                SettingSliderRow(label = "Độ sáng", value = brightness, onValueChange = { brightness = it })
-                                SettingSliderRow(label = "Độ tương phản", value = contrast, onValueChange = { contrast = it })
-                                SettingSliderRow(label = "Độ bão hòa màu", value = saturation, onValueChange = { saturation = it })
+                                // 2. Day / Night Mode (Redesigned with comfortable 42dp height)
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(
+                                        text = "Chế độ Ngày - Đêm (Day / Night):",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
 
+                                    val dayNightOptions = listOf(
+                                        Triple("Tự động (ICR)", Icons.Default.BrightnessAuto, "Auto"),
+                                        Triple("Màu sắc (Color)", Icons.Default.Palette, "Color"),
+                                        Triple("Trắng đen (Night)", Icons.Default.NightsStay, "Night")
+                                    )
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        dayNightOptions.forEach { (label, icon, value) ->
+                                            val isSelected = dayNightMode == value
+                                            Surface(
+                                                onClick = { dayNightMode = value },
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = if (isSelected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
+                                                border = androidx.compose.foundation.BorderStroke(
+                                                    1.2.dp,
+                                                    if (isSelected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outlineVariant
+                                                ),
+                                                modifier = Modifier.weight(1f).height(44.dp)
+                                            ) {
+                                                Column(
+                                                    modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp),
+                                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                                    verticalArrangement = Arrangement.Center
+                                                ) {
+                                                    Icon(
+                                                        imageVector = icon,
+                                                        contentDescription = null,
+                                                        tint = if (isSelected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                                        modifier = Modifier.size(15.dp)
+                                                    )
+                                                    Spacer(modifier = Modifier.height(2.dp))
+                                                    Text(
+                                                        text = label,
+                                                        fontSize = 10.sp,
+                                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                        color = if (isSelected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+                                                        maxLines = 1
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                                // 3. Flip & Mirror Toggles
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Text(
+                                        text = "Xoay - Đối xứng (Flip / Mirror):",
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Surface(
+                                            onClick = { isMirror = !isMirror },
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = if (isMirror) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                                            border = androidx.compose.foundation.BorderStroke(
+                                                1.dp,
+                                                if (isMirror) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                                            ),
+                                            modifier = Modifier.weight(1f).height(38.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Checkbox(
+                                                    checked = isMirror,
+                                                    onCheckedChange = { isMirror = it },
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("Lật gương (Mirror)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                            }
+                                        }
+
+                                        Surface(
+                                            onClick = { isFlip = !isFlip },
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = if (isFlip) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                                            border = androidx.compose.foundation.BorderStroke(
+                                                1.dp,
+                                                if (isFlip) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                                            ),
+                                            modifier = Modifier.weight(1f).height(38.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Checkbox(
+                                                    checked = isFlip,
+                                                    onCheckedChange = { isFlip = it },
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("Lật dọc (Flip 180°)", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                            }
+                                        }
+                                    }
+                                }
+
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                                // 4. Basic Image Sliders (Brightness, Contrast, Saturation, Sharpness)
+                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "Điều chỉnh hình ảnh cơ bản:",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        TextButton(
+                                            onClick = {
+                                                brightness = 50f
+                                                contrast = 50f
+                                                saturation = 50f
+                                                sharpness = 50f
+                                            },
+                                            contentPadding = PaddingValues(0.dp)
+                                        ) {
+                                            Text("Về chuẩn (50)", fontSize = 10.5.sp)
+                                        }
+                                    }
+
+                                    ProfessionalSliderRow(label = "Độ sáng (Brightness)", value = brightness, onValueChange = { brightness = it })
+                                    ProfessionalSliderRow(label = "Độ tương phản (Contrast)", value = contrast, onValueChange = { contrast = it })
+                                    ProfessionalSliderRow(label = "Độ bão hòa (Saturation)", value = saturation, onValueChange = { saturation = it })
+                                    ProfessionalSliderRow(label = "Độ sắc nét (Sharpness)", value = sharpness, onValueChange = { sharpness = it })
+                                }
+
+                                // Apply Button with Instant Live Preview Feedback
                                 Button(
                                     onClick = {
                                         isOperating = true
+                                        operationResult = null
                                         coroutineScope.launch {
                                             val res = configService.applyBacklightAndImage(
-                                                device, user, password,
+                                                device, user.trim(), password.trim(),
                                                 CameraImageSettings(
                                                     brightness = brightness.toInt(),
                                                     contrast = contrast.toInt(),
@@ -291,92 +724,132 @@ fun CameraSettingsDialog(
                                                 )
                                             )
                                             isOperating = false
-                                            operationResult = res.getOrNull() ?: res.exceptionOrNull()?.message
-                                            Toast.makeText(context, operationResult, Toast.LENGTH_SHORT).show()
+                                            if (res.isSuccess) {
+                                                operationResult = res.getOrNull()
+                                                Toast.makeText(context, "Đã lưu cài đặt! Đang làm mới khung hình...", Toast.LENGTH_SHORT).show()
+                                                delay(500)
+                                                refreshSnapshot()
+                                            } else {
+                                                operationResult = res.exceptionOrNull()?.message
+                                            }
                                         }
                                     },
                                     enabled = !isOperating,
-                                    modifier = Modifier.fillMaxWidth().height(38.dp)
+                                    modifier = Modifier.fillMaxWidth().height(44.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
+                                    shape = RoundedCornerShape(8.dp)
                                 ) {
-                                    Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Áp dụng hình ảnh & Chống ngược sáng", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    if (isOperating) {
+                                        CircularProgressIndicator(modifier = Modifier.size(16.dp), color = MaterialTheme.colorScheme.onPrimary, strokeWidth = 2.dp)
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Đang lưu & cập nhật hình ảnh...", fontSize = 12.sp)
+                                    } else {
+                                        Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("ÁP DỤNG & XEM KẾT QUẢ TRỰC TIẾP", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    }
                                 }
                             }
                         }
                     }
 
-                    // SECTION 2: VIDEO (ĐỘ PHÂN GIẢI, FPS, CODEC H.265)
-                    SettingAccordionHeader(
-                        title = "Mã hóa & Độ phân giải",
-                        subtitle = "Độ phân giải 2K/1080P, Chuẩn nén H.265/H.264, FPS",
-                        icon = Icons.Default.Videocam,
-                        isExpanded = expandedSection == "video",
-                        onClick = { expandedSection = if (expandedSection == "video") null else "video" }
-                    )
-
-                    AnimatedVisibility(visible = expandedSection == "video") {
+                    // TAB 1: ĐỘ PHÂN GIẢI & MÃ HÓA VIDEO
+                    if (selectedTab == 1) {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Text("Chọn độ phân giải:", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    listOf("4MP / 2K (1440P)" to "2560x1440", "Full HD (1080P)" to "1920x1080", "HD (720P)" to "1280x720").forEach { (label, res) ->
-                                        FilterChip(
-                                            selected = selectedResolution == res,
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text(
+                                    text = "ĐỘ PHÂN GIẢI & TỐC ĐỘ KHUNG HÌNH (FPS):",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+
+                                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    listOf(
+                                        "2560x1440" to "2K QHD (4 Megapixel) - Nét cao",
+                                        "1920x1080" to "Full HD 1080P (2 Megapixel) - Phổ biến",
+                                        "1280x720" to "HD 720P (1 Megapixel) - Tiết kiệm dung lượng"
+                                    ).forEach { (res, desc) ->
+                                        Surface(
                                             onClick = { selectedResolution = res },
-                                            label = { Text(label, fontSize = 10.5.sp) },
-                                            modifier = Modifier.weight(1f).height(32.dp)
-                                        )
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = if (selectedResolution == res) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                                            border = androidx.compose.foundation.BorderStroke(
+                                                1.dp,
+                                                if (selectedResolution == res) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                                            ),
+                                            modifier = Modifier.fillMaxWidth().height(42.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 10.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                RadioButton(
+                                                    selected = selectedResolution == res,
+                                                    onClick = { selectedResolution = res },
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(8.dp))
+                                                Text(text = "$res ($desc)", fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                                            }
+                                        }
                                     }
                                 }
 
-                                Text("Chuẩn nén Video (Codec):", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    listOf("H.265 (Tiết kiệm)" to "H.265", "H.264 (Tương thích)" to "H.264", "H.265+ (Smart)" to "H.265+").forEach { (label, codec) ->
-                                        FilterChip(
-                                            selected = selectedCodec == codec,
-                                            onClick = { selectedCodec = codec },
-                                            label = { Text(label, fontSize = 10.5.sp) },
-                                            modifier = Modifier.weight(1f).height(30.dp)
-                                        )
-                                    }
-                                }
+                                Text(
+                                    text = "CHUẨN NÉN HÌNH ẢNH (CODEC):",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
 
-                                Text("Tốc độ khung hình (Frame Rate):", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    listOf(15, 20, 25, 30).forEach { fps ->
-                                        FilterChip(
-                                            selected = selectedFps == fps,
-                                            onClick = { selectedFps = fps },
-                                            label = { Text("$fps FPS", fontSize = 11.sp) },
-                                            modifier = Modifier.weight(1f).height(30.dp)
-                                        )
+                                    listOf("H.265 (Smart)", "H.264 (Cơ bản)", "H.265+ (Siêu nén)").forEach { codec ->
+                                        val cVal = codec.substringBefore(" ")
+                                        val isSelected = selectedCodec == cVal
+                                        Surface(
+                                            onClick = { selectedCodec = cVal },
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = if (isSelected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface,
+                                            border = androidx.compose.foundation.BorderStroke(
+                                                1.dp,
+                                                if (isSelected) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.outlineVariant
+                                            ),
+                                            modifier = Modifier.weight(1f).height(38.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Text(
+                                                    text = codec,
+                                                    fontSize = 10.5.sp,
+                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                                    color = if (isSelected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface
+                                                )
+                                            }
+                                        }
                                     }
                                 }
 
                                 Button(
                                     onClick = {
                                         isOperating = true
+                                        operationResult = null
                                         coroutineScope.launch {
                                             val res = configService.applyVideoEncoding(
-                                                device, user, password,
+                                                device, user.trim(), password.trim(),
                                                 CameraVideoSettings(
                                                     resolution = selectedResolution,
-                                                    codec = selectedCodec,
-                                                    fps = selectedFps
+                                                    fps = selectedFps,
+                                                    codec = selectedCodec
                                                 )
                                             )
                                             isOperating = false
@@ -385,138 +858,93 @@ fun CameraSettingsDialog(
                                         }
                                     },
                                     enabled = !isOperating,
-                                    modifier = Modifier.fillMaxWidth().height(38.dp)
+                                    modifier = Modifier.fillMaxWidth().height(42.dp),
+                                    shape = RoundedCornerShape(8.dp)
                                 ) {
-                                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Lưu độ phân giải & Chuẩn nén", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    Text("LƯU ĐỘ PHÂN GIẢI & MÃ HÓA", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                                 }
                             }
                         }
                     }
 
-                    // SECTION 3: NTP & THỜI GIAN
-                    SettingAccordionHeader(
-                        title = "Thời gian & Máy chủ NTP",
-                        subtitle = "Cấu hình NTP Server, Múi giờ chuẩn GMT+7",
-                        icon = Icons.Default.Schedule,
-                        isExpanded = expandedSection == "ntp",
-                        onClick = { expandedSection = if (expandedSection == "ntp") null else "ntp" }
-                    )
-
-                    AnimatedVisibility(visible = expandedSection == "ntp") {
+                    // TAB 2: TÀI KHOẢN & MẬT KHẨU THIẾT BỊ
+                    if (selectedTab == 2) {
                         Card(
                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
-                            shape = RoundedCornerShape(8.dp),
+                            shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.fillMaxWidth()
                         ) {
-                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text(
+                                    text = "XÁC THỰC MẬT KHẨU CAMERA:",
+                                    fontSize = 11.5.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+
                                 OutlinedTextField(
-                                    value = ntpServer,
-                                    onValueChange = { ntpServer = it },
-                                    label = { Text("Máy chủ NTP (NTP Server)") },
+                                    value = user,
+                                    onValueChange = { user = it },
+                                    label = { Text("Tên tài khoản") },
                                     singleLine = true,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+
+                                OutlinedTextField(
+                                    value = password,
+                                    onValueChange = { password = it },
+                                    label = { Text("Mật khẩu thiết bị") },
+                                    singleLine = true,
+                                    visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
+                                    trailingIcon = {
+                                        IconButton(onClick = { showPassword = !showPassword }) {
+                                            Icon(
+                                                imageVector = if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    },
                                     modifier = Modifier.fillMaxWidth()
                                 )
 
                                 Row(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    horizontalArrangement = Arrangement.End
                                 ) {
-                                    listOf("pool.ntp.org", "time.google.com", "time.windows.com").forEach { srv ->
-                                        AssistChip(
-                                            onClick = { ntpServer = srv },
-                                            label = { Text(srv, fontSize = 10.sp) },
-                                            modifier = Modifier.weight(1f).height(28.dp)
-                                        )
+                                    Button(
+                                        onClick = {
+                                            refreshSnapshot()
+                                            Toast.makeText(context, "Đã lưu tài khoản & thử tải lại hình ảnh!", Toast.LENGTH_SHORT).show()
+                                        },
+                                        shape = RoundedCornerShape(8.dp)
+                                    ) {
+                                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text("Kết nối lại Camera")
                                     }
                                 }
-
-                                Text("Múi giờ: GMT+7:00 (Bangkok, Hanoi, Jakarta)", fontSize = 11.5.sp, fontWeight = FontWeight.Medium, color = MaterialTheme.colorScheme.primary)
-
-                                Button(
-                                    onClick = {
-                                        isOperating = true
-                                        coroutineScope.launch {
-                                            val res = configService.applyNtpConfig(
-                                                device, user, password,
-                                                CameraTimeSettings(
-                                                    ntpServer = ntpServer,
-                                                    ntpEnabled = true,
-                                                    timezone = "GMT+7"
-                                                )
-                                            )
-                                            isOperating = false
-                                            operationResult = res.getOrNull() ?: res.exceptionOrNull()?.message
-                                            Toast.makeText(context, operationResult, Toast.LENGTH_SHORT).show()
-                                        }
-                                    },
-                                    enabled = !isOperating,
-                                    modifier = Modifier.fillMaxWidth().height(38.dp)
-                                ) {
-                                    Icon(Icons.Default.CloudSync, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Lưu cấu hình NTP", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                }
-                            }
-                        }
-                    }
-
-                    // SECTION 4: TÀI KHOẢN XÁC THỰC
-                    SettingAccordionHeader(
-                        title = "Tài khoản Camera",
-                        subtitle = "Tài khoản và mật khẩu quản trị để gửi lệnh cài đặt",
-                        icon = Icons.Default.Lock,
-                        isExpanded = expandedSection == "auth",
-                        onClick = { expandedSection = if (expandedSection == "auth") null else "auth" }
-                    )
-
-                    AnimatedVisibility(visible = expandedSection == "auth") {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(10.dp),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                OutlinedTextField(
-                                    value = user,
-                                    onValueChange = { user = it },
-                                    label = { Text("Tài khoản", fontSize = 11.sp) },
-                                    singleLine = true,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                OutlinedTextField(
-                                    value = password,
-                                    onValueChange = { password = it },
-                                    label = { Text("Mật khẩu", fontSize = 11.sp) },
-                                    singleLine = true,
-                                    modifier = Modifier.weight(1f)
-                                )
                             }
                         }
                     }
                 }
 
-                // Bottom Dismiss
-                Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    tonalElevation = 4.dp
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                // Bottom Close button
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.End
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.End
-                    ) {
-                        OutlinedButton(
-                            onClick = onDismiss,
-                            modifier = Modifier.fillMaxWidth().height(40.dp)
-                        ) {
-                            Text("Đóng cửa sổ cài đặt", fontWeight = FontWeight.Bold)
-                        }
+                    OutlinedButton(onClick = onDismiss) {
+                        Text("Đóng cửa sổ cài đặt")
                     }
                 }
             }
@@ -525,70 +953,38 @@ fun CameraSettingsDialog(
 }
 
 @Composable
-private fun SettingAccordionHeader(
-    title: String,
-    subtitle: String,
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    isExpanded: Boolean,
-    onClick: () -> Unit
-) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(10.dp),
-        color = if (isExpanded) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
-        border = androidx.compose.foundation.BorderStroke(
-            1.dp,
-            if (isExpanded) MaterialTheme.colorScheme.primary.copy(alpha = 0.5f) else Color.Transparent
-        ),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = if (isExpanded) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.size(20.dp)
-                )
-                Spacer(modifier = Modifier.width(10.dp))
-                Column {
-                    Text(text = title, fontSize = 13.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurface)
-                    Text(text = subtitle, fontSize = 10.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-            }
-
-            Icon(
-                imageVector = if (isExpanded) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(20.dp)
-            )
-        }
-    }
-}
-
-@Composable
-private fun SettingSliderRow(
+private fun ProfessionalSliderRow(
     label: String,
     value: Float,
     onValueChange: (Float) -> Unit
 ) {
-    Row(
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
+        shape = RoundedCornerShape(6.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+        border = androidx.compose.foundation.BorderStroke(0.8.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
     ) {
-        Text(text = "$label: ${value.toInt()}", fontSize = 11.sp, modifier = Modifier.width(110.dp))
-        Slider(
-            value = value,
-            onValueChange = onValueChange,
-            valueRange = 0f..100f,
-            modifier = Modifier.weight(1f)
-        )
+        Column(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = label, fontSize = 11.sp, fontWeight = FontWeight.Medium)
+                Text(
+                    text = "${value.toInt()}",
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+            Slider(
+                value = value,
+                onValueChange = onValueChange,
+                valueRange = 0f..100f,
+                modifier = Modifier.fillMaxWidth().height(26.dp)
+            )
+        }
     }
 }
