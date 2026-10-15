@@ -1,10 +1,8 @@
 package com.scanipcamera.app.ui.components
 
 import android.widget.Toast
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -16,13 +14,10 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -40,17 +35,13 @@ import kotlin.math.abs
 @Composable
 fun TimeSyncDialog(
     device: CameraDevice,
-    defaultUser: String = "admin",
-    defaultPass: String = "admin123",
+    currentUsername: String = "admin",
+    currentPassword: String = "",
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val configService = remember { CameraConfigService() }
-
-    var user by remember { mutableStateOf(defaultUser) }
-    var password by remember { mutableStateOf(defaultPass) }
-    var showPassword by remember { mutableStateOf(false) }
 
     var isCheckingTime by remember { mutableStateOf(false) }
     var isOperating by remember { mutableStateOf(false) }
@@ -76,14 +67,10 @@ fun TimeSyncDialog(
         )
     }
 
-    val quickPasswords = remember {
-        listOf("admin123", "Admin@123", "admin12345", "123456", "admin@2024", "Camera@123")
-    }
-
-    // Function to read device time and compute offset
+    // Function to read device time and compute offset using credentials from main screen
     fun checkDeviceTime() {
-        if (password.isBlank()) {
-            errorMessage = "Vui lòng nhập mật khẩu của thiết bị để kiểm tra giờ!"
+        if (currentPassword.isBlank()) {
+            errorMessage = "Vui lòng nhập mật khẩu trên màn hình chính để đồng bộ giờ thiết bị!"
             return
         }
         isCheckingTime = true
@@ -94,7 +81,7 @@ fun TimeSyncDialog(
             val phoneNow = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())
             phoneTimeStr = phoneNow
 
-            val result = configService.getCurrentDeviceTime(device, user.trim(), password.trim())
+            val result = configService.getCurrentDeviceTime(device, currentUsername.trim(), currentPassword.trim())
             isCheckingTime = false
 
             if (result.isSuccess) {
@@ -118,7 +105,7 @@ fun TimeSyncDialog(
         }
     }
 
-    // Auto check time on first open
+    // Auto check time immediately on open
     LaunchedEffect(Unit) {
         checkDeviceTime()
     }
@@ -130,7 +117,7 @@ fun TimeSyncDialog(
         Surface(
             modifier = Modifier
                 .fillMaxWidth(0.95f)
-                .fillMaxHeight(0.92f),
+                .fillMaxHeight(0.90f),
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 6.dp
@@ -186,127 +173,93 @@ fun TimeSyncDialog(
                     modifier = Modifier
                         .weight(1f)
                         .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    // 1. Authentication section
-                    Card(
+                    // Credentials source badge (Taken directly from main screen)
+                    Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f))
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                     ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text(
-                                text = "XÁC THỰC MẬT KHẨU THIẾT BỊ",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                OutlinedTextField(
-                                    value = user,
-                                    onValueChange = { user = it },
-                                    label = { Text("Tài khoản", fontSize = 12.sp) },
-                                    singleLine = true,
-                                    modifier = Modifier.weight(1f),
-                                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.5.sp)
-                                )
-
-                                OutlinedTextField(
-                                    value = password,
-                                    onValueChange = { password = it },
-                                    label = { Text("Mật khẩu thiết bị *", fontSize = 12.sp) },
-                                    singleLine = true,
-                                    visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-                                    trailingIcon = {
-                                        IconButton(onClick = { showPassword = !showPassword }) {
-                                            Icon(
-                                                imageVector = if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                        }
-                                    },
-                                    modifier = Modifier.weight(1.5f),
-                                    textStyle = androidx.compose.ui.text.TextStyle(fontSize = 12.5.sp)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.VpnKey, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Xác thực: $currentUsername (Mật khẩu lấy từ màn hình chính)",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
                             }
+                            IconButton(
+                                onClick = { checkDeviceTime() },
+                                modifier = Modifier.size(28.dp),
+                                enabled = !isCheckingTime
+                            ) {
+                                Icon(Icons.Default.Refresh, contentDescription = "Kiểm tra lại", modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
 
-                            // Quick password presets
+                    // Loading Indicator
+                    if (isCheckingTime) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                        ) {
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier.padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = "Mật khẩu mẫu:",
-                                    fontSize = 10.5.sp,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                FlowRow(
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    quickPasswords.forEach { p ->
-                                        SuggestionChip(
-                                            onClick = {
-                                                password = p
-                                                checkDeviceTime()
-                                            },
-                                            label = { Text(p, fontSize = 10.sp) },
-                                            modifier = Modifier.height(26.dp)
-                                        )
-                                    }
-                                }
-                            }
-
-                            // Button Check Time & Auth
-                            Button(
-                                onClick = { checkDeviceTime() },
-                                modifier = Modifier.fillMaxWidth().height(38.dp),
-                                enabled = !isCheckingTime && !isOperating,
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                if (isCheckingTime) {
-                                    CircularProgressIndicator(modifier = Modifier.size(16.dp), color = MaterialTheme.colorScheme.onSecondary, strokeWidth = 2.dp)
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text("Đang kiểm tra mật khẩu & đọc giờ...", fontSize = 12.sp)
-                                } else {
-                                    Icon(Icons.Default.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text("Kiểm tra mật khẩu & Đọc lại giờ Camera", fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                                }
+                                CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text("Đang kết nối & đọc giờ thực tế từ thiết bị...", fontSize = 12.sp)
                             }
                         }
                     }
 
                     // Error Alert Banner
-                    if (errorMessage != null) {
+                    if (errorMessage != null && !isCheckingTime) {
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(8.dp),
-                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f)
+                            color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.85f)
                         ) {
-                            Row(
-                                modifier = Modifier.padding(10.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Icon(Icons.Default.Error, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
+                            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Default.Error, contentDescription = null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = errorMessage!!,
+                                        color = MaterialTheme.colorScheme.onErrorContainer,
+                                        fontSize = 11.5.sp,
+                                        lineHeight = 16.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
                                 Text(
-                                    text = errorMessage!!,
-                                    color = MaterialTheme.colorScheme.onErrorContainer,
-                                    fontSize = 11.5.sp,
-                                    lineHeight = 15.sp,
-                                    fontWeight = FontWeight.Medium
+                                    text = "💡 Lưu ý: Hãy đảm bảo bạn đã điền đúng mật khẩu của thiết bị ở thanh đầu màn hình chính.",
+                                    fontSize = 10.5.sp,
+                                    color = MaterialTheme.colorScheme.onErrorContainer.copy(alpha = 0.8f)
                                 )
+                                Button(
+                                    onClick = { checkDeviceTime() },
+                                    modifier = Modifier.align(Alignment.End).height(32.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                                ) {
+                                    Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Thử kết nối lại", fontSize = 11.sp)
+                                }
                             }
                         }
                     }
@@ -329,14 +282,13 @@ fun TimeSyncDialog(
                                     text = successMessage!!,
                                     color = Color(0xFF047857),
                                     fontSize = 11.5.sp,
-                                    lineHeight = 15.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
                         }
                     }
 
-                    // 2. Dual Clock Comparison Display (Camera Clock vs Phone Clock)
+                    // Dual Clock Comparison Display (Camera Clock vs Phone Clock)
                     if (deviceTimeStr != null) {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
@@ -373,7 +325,7 @@ fun TimeSyncDialog(
                                             Row(verticalAlignment = Alignment.CenterVertically) {
                                                 Icon(Icons.Default.Videocam, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(16.dp))
                                                 Spacer(modifier = Modifier.width(4.dp))
-                                                Text("Giờ Camera", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                                Text("Giờ Camera / Đầu ghi", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
                                             }
                                             Spacer(modifier = Modifier.height(4.dp))
                                             Text(
@@ -405,7 +357,7 @@ fun TimeSyncDialog(
                                             Row(verticalAlignment = Alignment.CenterVertically) {
                                                 Icon(Icons.Default.Smartphone, contentDescription = null, tint = Color(0xFF059669), modifier = Modifier.size(16.dp))
                                                 Spacer(modifier = Modifier.width(4.dp))
-                                                Text("Giờ Điện Thoại", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                                Text("Giờ Điện Thoại (GMT+7)", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold)
                                             }
                                             Spacer(modifier = Modifier.height(4.dp))
                                             Text(
@@ -428,7 +380,7 @@ fun TimeSyncDialog(
                                 if (offsetSeconds != null) {
                                     val offset = offsetSeconds!!
                                     if (offset <= 5) {
-                                        // Case 1: Already accurate!
+                                        // Accurate
                                         Surface(
                                             modifier = Modifier.fillMaxWidth(),
                                             shape = RoundedCornerShape(8.dp),
@@ -457,7 +409,7 @@ fun TimeSyncDialog(
                                             }
                                         }
                                     } else {
-                                        // Case 2: Out of sync!
+                                        // Out of sync
                                         val minutes = offset / 60
                                         val seconds = offset % 60
                                         val diffStr = if (minutes > 0) "$minutes phút $seconds giây" else "$seconds giây"
@@ -497,7 +449,7 @@ fun TimeSyncDialog(
                                                 errorMessage = null
                                                 successMessage = null
                                                 coroutineScope.launch {
-                                                    val res = configService.syncCameraTimeToPhone(device, user.trim(), password.trim())
+                                                    val res = configService.syncCameraTimeToPhone(device, currentUsername.trim(), currentPassword.trim())
                                                     isOperating = false
                                                     if (res.isSuccess) {
                                                         successMessage = res.getOrNull()
@@ -529,7 +481,7 @@ fun TimeSyncDialog(
                         }
                     }
 
-                    // 3. NTP Server Configuration
+                    // NTP Server Configuration
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
@@ -621,8 +573,8 @@ fun TimeSyncDialog(
                             // Save NTP Button
                             Button(
                                 onClick = {
-                                    if (password.isBlank()) {
-                                        errorMessage = "Vui lòng nhập mật khẩu thiết bị để lưu cấu hình NTP!"
+                                    if (currentPassword.isBlank()) {
+                                        errorMessage = "Vui lòng nhập mật khẩu trên màn hình chính để lưu cấu hình NTP!"
                                         return@Button
                                     }
                                     isOperating = true
@@ -633,8 +585,8 @@ fun TimeSyncDialog(
                                             device = device,
                                             ntpServer = selectedNtpServer.trim(),
                                             port = 123,
-                                            user = user.trim(),
-                                            pass = password.trim()
+                                            user = currentUsername.trim(),
+                                            pass = currentPassword.trim()
                                         )
                                         isOperating = false
                                         if (res.isSuccess) {
@@ -657,7 +609,7 @@ fun TimeSyncDialog(
                                 } else {
                                     Icon(Icons.Default.CloudSync, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
-                                    Text("LƯU CẤU HÌNH NTP CHO CAMERA", fontWeight = FontWeight.Bold, fontSize = 12.sp)
+                                    Text("LƯU CẤU HÌNH NTP CHO THIẾT BỊ", fontWeight = FontWeight.Bold, fontSize = 12.sp)
                                 }
                             }
                         }

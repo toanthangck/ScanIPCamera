@@ -46,21 +46,17 @@ import java.util.Locale
 @Composable
 fun CameraSettingsDialog(
     device: CameraDevice,
-    defaultUser: String = "admin",
-    defaultPass: String = "admin123",
+    currentUsername: String = "admin",
+    currentPassword: String = "",
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
     val configService = remember { CameraConfigService() }
 
-    var user by remember { mutableStateOf(defaultUser) }
-    var password by remember { mutableStateOf(defaultPass) }
-    var showPassword by remember { mutableStateOf(false) }
-
     var isOperating by remember { mutableStateOf(false) }
     var operationResult by remember { mutableStateOf<String?>(null) }
-    var selectedTab by remember { mutableIntStateOf(0) } // 0: Chống ngược sáng & Màu sắc, 1: Độ phân giải & Video, 2: Xác thực
+    var selectedTab by remember { mutableIntStateOf(0) } // 0: Chống ngược sáng & Màu sắc, 1: Độ phân giải & Video
 
     // Live Snapshot states
     var snapshotBitmap by remember { mutableStateOf<Bitmap?>(null) }
@@ -87,11 +83,14 @@ fun CameraSettingsDialog(
 
     // Function to load camera snapshot
     fun refreshSnapshot() {
-        if (password.isBlank()) return
+        if (currentPassword.isBlank()) {
+            snapshotError = "Vui lòng nhập mật khẩu trên màn hình chính!"
+            return
+        }
         isLoadingSnapshot = true
         snapshotError = null
         coroutineScope.launch {
-            val res = configService.fetchCameraSnapshot(device, user.trim(), password.trim())
+            val res = configService.fetchCameraSnapshot(device, currentUsername.trim(), currentPassword.trim())
             isLoadingSnapshot = false
             if (res.isSuccess) {
                 snapshotBitmap = res.getOrNull()
@@ -106,7 +105,7 @@ fun CameraSettingsDialog(
     LaunchedEffect(autoRefreshSnapshot) {
         while (autoRefreshSnapshot) {
             delay(2500)
-            val res = configService.fetchCameraSnapshot(device, user.trim(), password.trim())
+            val res = configService.fetchCameraSnapshot(device, currentUsername.trim(), currentPassword.trim())
             if (res.isSuccess) {
                 snapshotBitmap = res.getOrNull()
                 lastSnapshotTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
@@ -179,6 +178,27 @@ fun CameraSettingsDialog(
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(msg, fontSize = 11.5.sp, color = Color(0xFF0284C7), fontWeight = FontWeight.SemiBold)
                         }
+                    }
+                }
+
+                // Credential Info Badge (Uses master credentials from main screen)
+                Surface(
+                    shape = RoundedCornerShape(6.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.VpnKey, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(13.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Xác thực: $currentUsername (Mật khẩu tự động lấy từ màn hình chính)",
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
                     }
                 }
 
@@ -351,7 +371,7 @@ fun CameraSettingsDialog(
                         }
                     }
 
-                    // Navigation Tabs
+                    // Navigation Tabs (2 Tabs: Ngược Sáng & Màu sắc, Độ Phân Giải)
                     PrimaryTabRow(
                         selectedTabIndex = selectedTab,
                         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
@@ -368,12 +388,6 @@ fun CameraSettingsDialog(
                             onClick = { selectedTab = 1 },
                             text = { Text("Độ Phân Giải", fontSize = 11.5.sp, fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal) },
                             icon = { Icon(Icons.Default.Hd, contentDescription = null, modifier = Modifier.size(16.dp)) }
-                        )
-                        Tab(
-                            selected = selectedTab == 2,
-                            onClick = { selectedTab = 2 },
-                            text = { Text("Mật Khẩu", fontSize = 11.5.sp, fontWeight = if (selectedTab == 2) FontWeight.Bold else FontWeight.Normal) },
-                            icon = { Icon(Icons.Default.VpnKey, contentDescription = null, modifier = Modifier.size(16.dp)) }
                         )
                     }
 
@@ -710,7 +724,7 @@ fun CameraSettingsDialog(
                                         operationResult = null
                                         coroutineScope.launch {
                                             val res = configService.applyBacklightAndImage(
-                                                device, user.trim(), password.trim(),
+                                                device, currentUsername.trim(), currentPassword.trim(),
                                                 CameraImageSettings(
                                                     brightness = brightness.toInt(),
                                                     contrast = contrast.toInt(),
@@ -845,7 +859,7 @@ fun CameraSettingsDialog(
                                         operationResult = null
                                         coroutineScope.launch {
                                             val res = configService.applyVideoEncoding(
-                                                device, user.trim(), password.trim(),
+                                                device, currentUsername.trim(), currentPassword.trim(),
                                                 CameraVideoSettings(
                                                     resolution = selectedResolution,
                                                     fps = selectedFps,
@@ -864,70 +878,6 @@ fun CameraSettingsDialog(
                                     Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text("LƯU ĐỘ PHÂN GIẢI & MÃ HÓA", fontWeight = FontWeight.Bold, fontSize = 12.sp)
-                                }
-                            }
-                        }
-                    }
-
-                    // TAB 2: TÀI KHOẢN & MẬT KHẨU THIẾT BỊ
-                    if (selectedTab == 2) {
-                        Card(
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)),
-                            shape = RoundedCornerShape(10.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(10.dp)
-                            ) {
-                                Text(
-                                    text = "XÁC THỰC MẬT KHẨU CAMERA:",
-                                    fontSize = 11.5.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-
-                                OutlinedTextField(
-                                    value = user,
-                                    onValueChange = { user = it },
-                                    label = { Text("Tên tài khoản") },
-                                    singleLine = true,
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-
-                                OutlinedTextField(
-                                    value = password,
-                                    onValueChange = { password = it },
-                                    label = { Text("Mật khẩu thiết bị") },
-                                    singleLine = true,
-                                    visualTransformation = if (showPassword) VisualTransformation.None else PasswordVisualTransformation(),
-                                    trailingIcon = {
-                                        IconButton(onClick = { showPassword = !showPassword }) {
-                                            Icon(
-                                                imageVector = if (showPassword) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(18.dp)
-                                            )
-                                        }
-                                    },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.End
-                                ) {
-                                    Button(
-                                        onClick = {
-                                            refreshSnapshot()
-                                            Toast.makeText(context, "Đã lưu tài khoản & thử tải lại hình ảnh!", Toast.LENGTH_SHORT).show()
-                                        },
-                                        shape = RoundedCornerShape(8.dp)
-                                    ) {
-                                        Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(16.dp))
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text("Kết nối lại Camera")
-                                    }
                                 }
                             }
                         }

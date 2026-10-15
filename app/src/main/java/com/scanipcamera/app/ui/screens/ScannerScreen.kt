@@ -239,14 +239,20 @@ fun ScannerScreen(
             ) {
                 CompactCredentialField(
                     value = defaultUser,
-                    onValueChange = { defaultUser = it },
+                    onValueChange = {
+                        defaultUser = it
+                        viewModel.updateDefaultCredentials(it, defaultPassword, defaultPassword)
+                    },
                     placeholder = "Tài khoản",
                     leadingIcon = Icons.Default.Person,
                     modifier = Modifier.weight(1f)
                 )
                 CompactCredentialField(
                     value = defaultPassword,
-                    onValueChange = { defaultPassword = it },
+                    onValueChange = {
+                        defaultPassword = it
+                        viewModel.updateDefaultCredentials(defaultUser, it, it)
+                    },
                     placeholder = "Mật khẩu",
                     leadingIcon = Icons.Default.Lock,
                     isPassword = true,
@@ -901,6 +907,7 @@ fun ScannerScreen(
             phoneIp = wifiInfo.ipAddress,
             phoneSubnetMask = wifiInfo.subnetMask,
             phoneGateway = wifiInfo.gateway,
+            defaultPassword = defaultPassword,
             onDismiss = { viewModel.closeConfigDialog() },
             onSave = { payload -> viewModel.applyNetworkConfig(device, payload) }
         )
@@ -910,6 +917,7 @@ fun ScannerScreen(
     activatingDevice?.let { device ->
         ActivationDialog(
             device = device,
+            defaultPassword = defaultPassword,
             onDismiss = { viewModel.closeActivationDialog() },
             onActivate = { newPassword -> viewModel.activateDevice(device, newPassword) }
         )
@@ -919,6 +927,8 @@ fun ScannerScreen(
     rtspDevice?.let { device ->
         RtspDialog(
             device = device,
+            defaultUser = defaultUser,
+            defaultPassword = defaultPassword,
             onDismiss = { viewModel.closeRtspDialog() }
         )
     }
@@ -950,6 +960,7 @@ fun ScannerScreen(
     rebootingDevice?.let { device ->
         RebootDialog(
             device = device,
+            defaultPassword = defaultPassword,
             onDismiss = { viewModel.closeRebootDialog() },
             onConfirmReboot = { password -> viewModel.rebootDevice(device, password) }
         )
@@ -964,8 +975,8 @@ fun ScannerScreen(
     settingsDevice?.let { dev ->
         CameraSettingsDialog(
             device = dev,
-            defaultUser = defaultUser,
-            defaultPass = defaultPassword,
+            currentUsername = defaultUser,
+            currentPassword = defaultPassword,
             onDismiss = { viewModel.closeSettingsDialog() }
         )
     }
@@ -1062,15 +1073,10 @@ fun ScannerScreen(
 
     // Time Sync & NTP Dialog
     timeSyncDevice?.let { dev ->
-        val effectivePass = if (dev.category == DeviceCategory.NVR || dev.category == DeviceCategory.DVR) {
-            googleUser.defaultNvrPassword
-        } else {
-            defaultPassword
-        }
         TimeSyncDialog(
             device = dev,
-            defaultUser = defaultUser,
-            defaultPass = effectivePass,
+            currentUsername = defaultUser,
+            currentPassword = defaultPassword,
             onDismiss = { viewModel.closeTimeSyncDialog() }
         )
     }

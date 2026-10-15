@@ -32,11 +32,13 @@ import com.scanipcamera.app.data.model.RtspHelper
 @Composable
 fun RtspDialog(
     device: CameraDevice,
+    defaultUser: String = "admin",
+    defaultPassword: String = "",
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
-    var username by remember { mutableStateOf("admin") }
-    var password by remember { mutableStateOf("") }
+    var username by remember { mutableStateOf(defaultUser) }
+    var password by remember { mutableStateOf(defaultPassword) }
 
     val streams = remember(username, password, device) {
         RtspHelper.generateStreams(device, username, password)

@@ -25,6 +25,7 @@ fun ConfigDialog(
     phoneIp: String = "",
     phoneSubnetMask: String = "255.255.255.0",
     phoneGateway: String = "",
+    defaultPassword: String = "",
     onDismiss: () -> Unit,
     onSave: (NetworkConfigPayload) -> Unit
 ) {
@@ -33,7 +34,7 @@ fun ConfigDialog(
     var gateway by remember { mutableStateOf(device.ipv4Gateway) }
     var port by remember { mutableStateOf(device.sdkPort.toString()) }
     var isDhcp by remember { mutableStateOf(device.isDhcpEnabled) }
-    var password by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf(defaultPassword) }
 
     AlertDialog(
         onDismissRequest = onDismiss,

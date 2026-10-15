@@ -18,10 +18,11 @@ import com.scanipcamera.app.data.model.CameraDevice
 @Composable
 fun RebootDialog(
     device: CameraDevice,
+    defaultPassword: String = "",
     onDismiss: () -> Unit,
     onConfirmReboot: (String) -> Unit
 ) {
-    var password by remember { mutableStateOf("") }
+    var password by remember { mutableStateOf(defaultPassword) }
 
     AlertDialog(
         onDismissRequest = onDismiss,

@@ -14,11 +14,12 @@ import com.scanipcamera.app.data.model.CameraDevice
 @Composable
 fun ActivationDialog(
     device: CameraDevice,
+    defaultPassword: String = "",
     onDismiss: () -> Unit,
     onActivate: (String) -> Unit
 ) {
-    var newPassword by remember { mutableStateOf("") }
-    var confirmPassword by remember { mutableStateOf("") }
+    var newPassword by remember { mutableStateOf(defaultPassword) }
+    var confirmPassword by remember { mutableStateOf(defaultPassword) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
