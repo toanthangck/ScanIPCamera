@@ -131,6 +131,12 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
     private val _editingProject = MutableStateFlow<SiteProject?>(null)
     val editingProject: StateFlow<SiteProject?> = _editingProject
 
+    private val _timeSyncDevice = MutableStateFlow<CameraDevice?>(null)
+    val timeSyncDevice: StateFlow<CameraDevice?> = _timeSyncDevice
+
+    private val _showDefaultCredentialsDialog = MutableStateFlow(false)
+    val showDefaultCredentialsDialog: StateFlow<Boolean> = _showDefaultCredentialsDialog
+
     private val _userMessage = MutableStateFlow<String?>(null)
     val userMessage: StateFlow<String?> = _userMessage
 
@@ -244,6 +250,30 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
 
     fun closeEditProjectDialog() {
         _editingProject.value = null
+    }
+
+    fun openTimeSyncDialog(device: CameraDevice) {
+        _timeSyncDevice.value = device
+    }
+
+    fun closeTimeSyncDialog() {
+        _timeSyncDevice.value = null
+    }
+
+    fun openDefaultCredentialsDialog() {
+        _showDefaultCredentialsDialog.value = true
+    }
+
+    fun closeDefaultCredentialsDialog() {
+        _showDefaultCredentialsDialog.value = false
+    }
+
+    fun updateTechnicianProfile(name: String, phone: String) {
+        googleAuthManager.updateTechnicianProfile(name, phone)
+    }
+
+    fun updateDefaultCredentials(user: String, camPass: String, nvrPass: String) {
+        googleAuthManager.updateDefaultCredentials(user, camPass, nvrPass)
     }
 
     fun clearUserMessage() {

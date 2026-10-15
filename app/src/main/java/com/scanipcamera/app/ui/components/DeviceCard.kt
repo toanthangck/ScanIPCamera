@@ -419,7 +419,7 @@ fun DeviceCard(
                         )
 
                         DropdownMenuItem(
-                            text = { Text("Đồng bộ giờ điện thoại ngay", fontSize = 13.sp) },
+                            text = { Text("Đồng bộ giờ & Cấu hình NTP", fontSize = 13.sp) },
                             onClick = {
                                 showMenu = false
                                 onTimeSyncClick()

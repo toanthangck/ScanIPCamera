@@ -60,9 +60,11 @@ fun ScannerScreen(
     val siteProjects by viewModel.siteProjects.collectAsState()
     val googleUser by viewModel.googleUser.collectAsState()
     val editingProject by viewModel.editingProject.collectAsState()
+    val timeSyncDevice by viewModel.timeSyncDevice.collectAsState()
+    val showDefaultCredentialsDialog by viewModel.showDefaultCredentialsDialog.collectAsState()
 
-    var defaultUser by remember { mutableStateOf("admin") }
-    var defaultPassword by remember { mutableStateOf("admin123") }
+    var defaultUser by remember(googleUser.defaultUsername) { mutableStateOf(googleUser.defaultUsername) }
+    var defaultPassword by remember(googleUser.defaultCameraPassword) { mutableStateOf(googleUser.defaultCameraPassword) }
 
     var showWanDialogDirect by remember { mutableStateOf(false) }
     var showNetworkCard by remember { mutableStateOf(false) }
@@ -250,6 +252,21 @@ fun ScannerScreen(
                     isPassword = true,
                     modifier = Modifier.weight(1f)
                 )
+                Surface(
+                    onClick = { viewModel.openDefaultCredentialsDialog() },
+                    shape = RoundedCornerShape(6.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f),
+                    modifier = Modifier.size(32.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Key,
+                            contentDescription = "Cấu hình mật khẩu mặc định",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
             }
 
             // Technician Quick Action Toolbar
@@ -869,7 +886,7 @@ fun ScannerScreen(
                             onDiagnosticClick = { viewModel.openDiagnosticDialog(device) },
                             onWanPortClick = { viewModel.openWanPortDialog(device) },
                             onRebootClick = { viewModel.openRebootDialog(device) },
-                            onTimeSyncClick = { viewModel.syncDeviceTime(device, defaultPassword) }
+                            onTimeSyncClick = { viewModel.openTimeSyncDialog(device) }
                         )
                     }
                 }
@@ -976,6 +993,8 @@ fun ScannerScreen(
             wanIp = wanInfo?.ip ?: "",
             wifiSsid = wifiInfo.ssid,
             initialProject = editingProject,
+            defaultTechnicianName = googleUser.technicianName,
+            defaultTechnicianPhone = googleUser.technicianPhone,
             onDismiss = {
                 showHandoverDialog = false
                 viewModel.closeEditProjectDialog()
@@ -1031,6 +1050,40 @@ fun ScannerScreen(
                 if (intent != null) {
                     context.startActivity(android.content.Intent.createChooser(intent, "Chia sẻ file sao lưu"))
                 }
+            },
+            onUpdateTechnicianProfile = { name, phone ->
+                viewModel.updateTechnicianProfile(name, phone)
+            },
+            onUpdateDefaultCredentials = { u, camP, nvrP ->
+                viewModel.updateDefaultCredentials(u, camP, nvrP)
+            }
+        )
+    }
+
+    // Time Sync & NTP Dialog
+    timeSyncDevice?.let { dev ->
+        val effectivePass = if (dev.category == DeviceCategory.NVR || dev.category == DeviceCategory.DVR) {
+            googleUser.defaultNvrPassword
+        } else {
+            defaultPassword
+        }
+        TimeSyncDialog(
+            device = dev,
+            defaultUser = defaultUser,
+            defaultPass = effectivePass,
+            onDismiss = { viewModel.closeTimeSyncDialog() }
+        )
+    }
+
+    // Default Credentials Dialog
+    if (showDefaultCredentialsDialog) {
+        DefaultCredentialsDialog(
+            currentUsername = googleUser.defaultUsername,
+            currentCameraPassword = googleUser.defaultCameraPassword,
+            currentNvrPassword = googleUser.defaultNvrPassword,
+            onDismiss = { viewModel.closeDefaultCredentialsDialog() },
+            onSave = { u, camP, nvrP ->
+                viewModel.updateDefaultCredentials(u, camP, nvrP)
             }
         )
     }

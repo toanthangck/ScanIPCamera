@@ -46,6 +46,8 @@ fun HandoverReportDialog(
     wanIp: String = "",
     wifiSsid: String = "",
     initialProject: SiteProject? = null,
+    defaultTechnicianName: String = "Nguyễn Toàn Thắng",
+    defaultTechnicianPhone: String = "0965620086",
     onDismiss: () -> Unit,
     onSaveProject: (SiteProject) -> Unit
 ) {
@@ -56,14 +58,12 @@ fun HandoverReportDialog(
 
     // Form fields
     var siteName by remember {
-        mutableStateOf(initialProject?.siteName ?: "Công trình Camera ${wifiSsid.ifEmpty { "Gia đình" }}")
+        mutableStateOf(initialProject?.siteName ?: "")
     }
     var customerName by remember { mutableStateOf(initialProject?.customerName ?: "") }
     var customerPhone by remember { mutableStateOf(initialProject?.customerPhone ?: "") }
     var address by remember { mutableStateOf(initialProject?.address ?: "") }
     var warrantyMonths by remember { mutableIntStateOf(initialProject?.warrantyMonths ?: 24) }
-    var technicianName by remember { mutableStateOf(initialProject?.technicianName ?: "Nguyễn Toàn Thắng") }
-    var technicianPhone by remember { mutableStateOf(initialProject?.technicianPhone ?: "0965620086") }
     var notes by remember { mutableStateOf(initialProject?.notes ?: "") }
 
     // Selected cameras mapping & custom fields
@@ -117,8 +117,8 @@ fun HandoverReportDialog(
             customerName = customerName,
             customerPhone = customerPhone,
             address = address,
-            technicianName = technicianName,
-            technicianPhone = technicianPhone,
+            technicianName = defaultTechnicianName,
+            technicianPhone = defaultTechnicianPhone,
             createdAt = initialProject?.createdAt ?: System.currentTimeMillis(),
             wanIp = wanIp,
             wifiSsid = wifiSsid,
@@ -221,7 +221,7 @@ fun HandoverReportDialog(
                                 value = siteName,
                                 onValueChange = { siteName = it },
                                 label = { Text("Tên công trình / Dự án *") },
-                                placeholder = { Text("Ví dụ: Biệt thự Anh Hưng - TP Bắc Ninh") },
+                                placeholder = { Text("Tên công trình của bạn") },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
                             )
@@ -278,24 +278,41 @@ fun HandoverReportDialog(
                                 }
                             }
 
-                            Row(
+                            // Technician info card from Profile
+                            Card(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                ),
+                                shape = RoundedCornerShape(8.dp)
                             ) {
-                                OutlinedTextField(
-                                    value = technicianName,
-                                    onValueChange = { technicianName = it },
-                                    label = { Text("Kỹ thuật viên phụ trách") },
-                                    singleLine = true,
-                                    modifier = Modifier.weight(1.2f)
-                                )
-                                OutlinedTextField(
-                                    value = technicianPhone,
-                                    onValueChange = { technicianPhone = it },
-                                    label = { Text("SĐT Kỹ thuật") },
-                                    singleLine = true,
-                                    modifier = Modifier.weight(1f)
-                                )
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Person,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "KTV: $defaultTechnicianName • $defaultTechnicianPhone",
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "Được cấu hình trong mục Cài đặt tài khoản",
+                                            fontSize = 10.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
                             }
 
                             OutlinedTextField(

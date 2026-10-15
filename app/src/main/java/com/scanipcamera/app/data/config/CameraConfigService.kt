@@ -104,6 +104,95 @@ class CameraConfigService {
     }
 
     /**
+     * Read actual real-time clock from device
+     */
+    suspend fun getCurrentDeviceTime(
+        device: CameraDevice,
+        user: String,
+        pass: String
+    ): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            when (device.brand) {
+                DeviceBrand.DAHUA, DeviceBrand.IMOU, DeviceBrand.KBVISION -> {
+                    // Try global.cgi
+                    val url = "http://${device.ipv4Address}:${device.httpPort}/cgi-bin/global.cgi?action=getCurrentTime"
+                    val res = sendHttpRequest(url, "GET", null, user, pass)
+                    if (res.isSuccess) {
+                        val body = res.getOrNull() ?: ""
+                        val timeRegex = Regex("result=(\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2})")
+                        val match = timeRegex.find(body)
+                        if (match != null) {
+                            return@withContext Result.success(match.groups[1]!!.value)
+                        }
+                    }
+                    // Try configManager.cgi
+                    val url2 = "http://${device.ipv4Address}:${device.httpPort}/cgi-bin/configManager.cgi?action=getConfig&name=General.LocalTime"
+                    val res2 = sendHttpRequest(url2, "GET", null, user, pass)
+                    if (res2.isSuccess) {
+                        val body = res2.getOrNull() ?: ""
+                        val timeRegex = Regex("table\\.General\\.LocalTime=(\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2})")
+                        val match = timeRegex.find(body)
+                        if (match != null) {
+                            return@withContext Result.success(match.groups[1]!!.value)
+                        }
+                    }
+                    if (res.isFailure && res.exceptionOrNull()?.message?.contains("401") == true) {
+                        return@withContext Result.failure(Exception("Sai mật khẩu! Thiết bị từ chối truy cập (401)."))
+                    }
+                }
+                DeviceBrand.HIKVISION, DeviceBrand.EZVIZ -> {
+                    val url = "http://${device.ipv4Address}:${device.httpPort}/ISAPI/System/time"
+                    val res = sendHttpRequest(url, "GET", null, user, pass)
+                    if (res.isSuccess) {
+                        val body = res.getOrNull() ?: ""
+                        val match = Regex("<localTime>([^<]+)</localTime>").find(body)
+                        if (match != null) {
+                            val raw = match.groups[1]!!.value.replace("T", " ")
+                            val cleanTime = if (raw.contains("+")) raw.substringBefore("+") else raw
+                            return@withContext Result.success(cleanTime.trim())
+                        }
+                    }
+                    if (res.isFailure && res.exceptionOrNull()?.message?.contains("401") == true) {
+                        return@withContext Result.failure(Exception("Sai mật khẩu! Thiết bị từ chối truy cập (401)."))
+                    }
+                }
+                else -> {
+                    // Try Dahua endpoint
+                    val url = "http://${device.ipv4Address}:${device.httpPort}/cgi-bin/global.cgi?action=getCurrentTime"
+                    val res = sendHttpRequest(url, "GET", null, user, pass)
+                    if (res.isSuccess) {
+                        val body = res.getOrNull() ?: ""
+                        val timeRegex = Regex("result=(\\d{4}-\\d{2}-\\d{2}\\s+\\d{2}:\\d{2}:\\d{2})")
+                        val match = timeRegex.find(body)
+                        if (match != null) {
+                            return@withContext Result.success(match.groups[1]!!.value)
+                        }
+                    }
+                    // Try Hikvision endpoint
+                    val urlHik = "http://${device.ipv4Address}:${device.httpPort}/ISAPI/System/time"
+                    val resHik = sendHttpRequest(urlHik, "GET", null, user, pass)
+                    if (resHik.isSuccess) {
+                        val body = resHik.getOrNull() ?: ""
+                        val match = Regex("<localTime>([^<]+)</localTime>").find(body)
+                        if (match != null) {
+                            val raw = match.groups[1]!!.value.replace("T", " ")
+                            val cleanTime = if (raw.contains("+")) raw.substringBefore("+") else raw
+                            return@withContext Result.success(cleanTime.trim())
+                        }
+                    }
+                    if ((res.isFailure && res.exceptionOrNull()?.message?.contains("401") == true) ||
+                        (resHik.isFailure && resHik.exceptionOrNull()?.message?.contains("401") == true)) {
+                        return@withContext Result.failure(Exception("Sai mật khẩu! Thiết bị từ chối truy cập (401)."))
+                    }
+                }
+            }
+            Result.failure(Exception("Không thể lấy giờ từ thiết bị. Vui lòng kiểm tra lại mật khẩu hoặc kết nối."))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
      * One-Tap Synchronize Camera Time to current Phone's local time
      */
     suspend fun syncCameraTimeToPhone(
@@ -124,11 +213,17 @@ class CameraConfigService {
                     val res = sendHttpRequest(url, "GET", null, user, pass)
                     if (res.isSuccess && res.getOrNull()?.contains("OK") == true) {
                         Result.success("Đã đồng bộ giờ Camera thành công: $dahuaFormat")
+                    } else if (res.isFailure && res.exceptionOrNull()?.message?.contains("401") == true) {
+                        Result.failure(Exception("Sai mật khẩu! Thiết bị từ chối truy cập (401)."))
                     } else {
                         // Fallback try setting NTP
                         val ntpUrl = "http://${device.ipv4Address}:${device.httpPort}/cgi-bin/configManager.cgi?action=setConfig&NTP.Address=pool.ntp.org&NTP.Enable=true&NTP.TimeZone=28"
-                        sendHttpRequest(ntpUrl, "GET", null, user, pass)
-                        Result.success("Đã gửi lệnh đồng bộ giờ chuẩn Việt Nam (GMT+7) cho Camera.")
+                        val ntpRes = sendHttpRequest(ntpUrl, "GET", null, user, pass)
+                        if (ntpRes.isSuccess) {
+                            Result.success("Đã gửi lệnh đồng bộ giờ chuẩn Việt Nam (GMT+7) cho Camera.")
+                        } else {
+                            Result.failure(Exception("Không thể đồng bộ giờ. Vui lòng kiểm tra mật khẩu thiết bị."))
+                        }
                     }
                 }
                 DeviceBrand.HIKVISION, DeviceBrand.EZVIZ -> {
@@ -145,23 +240,86 @@ class CameraConfigService {
                     val res = sendHttpRequest(url, "PUT", xml, user, pass)
                     if (res.isSuccess) {
                         Result.success("Đã đồng bộ giờ Hikvision thành công: $dahuaFormat")
+                    } else if (res.isFailure && res.exceptionOrNull()?.message?.contains("401") == true) {
+                        Result.failure(Exception("Sai mật khẩu! Thiết bị từ chối truy cập (401)."))
                     } else {
-                        Result.success("Đã gửi lệnh cập nhật thời gian theo giờ điện thoại.")
+                        Result.failure(Exception("Không thể đồng bộ giờ Hikvision. Vui lòng kiểm tra mật khẩu."))
                     }
                 }
                 else -> {
                     // Try Dahua first, then Hikvision
                     val dUrl = "http://${device.ipv4Address}:${device.httpPort}/cgi-bin/configManager.cgi?action=setConfig&General.LocalTime=${java.net.URLEncoder.encode(dahuaFormat, "UTF-8")}"
                     val dRes = sendHttpRequest(dUrl, "GET", null, user, pass)
-                    if (dRes.isSuccess) {
+                    if (dRes.isSuccess && dRes.getOrNull()?.contains("OK") == true) {
                         Result.success("Đã đồng bộ thời gian: $dahuaFormat")
+                    } else if (dRes.isFailure && dRes.exceptionOrNull()?.message?.contains("401") == true) {
+                        Result.failure(Exception("Sai mật khẩu! Thiết bị từ chối truy cập (401)."))
                     } else {
-                        Result.success("Đã gửi lệnh đồng bộ thời gian thiết bị.")
+                        Result.failure(Exception("Không thể kết nối hoặc sai mật khẩu."))
                     }
                 }
             }
         } catch (e: Exception) {
             Result.failure(Exception("Lỗi đồng bộ giờ: ${e.message}"))
+        }
+    }
+
+    /**
+     * Configure NTP Server & Timezone for Camera/NVR
+     */
+    suspend fun configureNtpServer(
+        device: CameraDevice,
+        ntpServer: String,
+        port: Int = 123,
+        user: String,
+        pass: String
+    ): Result<String> = withContext(Dispatchers.IO) {
+        try {
+            when (device.brand) {
+                DeviceBrand.DAHUA, DeviceBrand.IMOU, DeviceBrand.KBVISION -> {
+                    val url = "http://${device.ipv4Address}:${device.httpPort}/cgi-bin/configManager.cgi?action=setConfig&NTP.Address=$ntpServer&NTP.Port=$port&NTP.Enable=true&NTP.TimeZone=28&NTP.UpdatePeriod=60"
+                    val res = sendHttpRequest(url, "GET", null, user, pass)
+                    if (res.isSuccess) {
+                        Result.success("Đã cài NTP: $ntpServer (Cập nhật mỗi 60 phút, múi giờ GMT+7).")
+                    } else if (res.exceptionOrNull()?.message?.contains("401") == true) {
+                        Result.failure(Exception("Sai mật khẩu! Thiết bị từ chối truy cập (401)."))
+                    } else {
+                        Result.failure(Exception("Không thể lưu NTP: ${res.exceptionOrNull()?.message}"))
+                    }
+                }
+                DeviceBrand.HIKVISION, DeviceBrand.EZVIZ -> {
+                    val xml = """
+                        <?xml version="1.0" encoding="UTF-8"?>
+                        <NTPInfo version="2.0" xmlns="http://www.hikvision.com/ver20/XMLSchema">
+                            <enabled>true</enabled>
+                            <addressingFormatType>hostname</addressingFormatType>
+                            <hostName>$ntpServer</hostName>
+                            <portNo>$port</portNo>
+                            <synchronizeInterval>60</synchronizeInterval>
+                        </NTPInfo>
+                    """.trimIndent()
+                    val url = "http://${device.ipv4Address}:${device.httpPort}/ISAPI/System/time/ntpServers/1"
+                    val res = sendHttpRequest(url, "PUT", xml, user, pass)
+                    if (res.isSuccess) {
+                        Result.success("Đã cài NTP: $ntpServer (Cập nhật mỗi 60 phút).")
+                    } else if (res.exceptionOrNull()?.message?.contains("401") == true) {
+                        Result.failure(Exception("Sai mật khẩu! Thiết bị từ chối truy cập (401)."))
+                    } else {
+                        Result.failure(Exception("Không thể lưu NTP Hikvision: ${res.exceptionOrNull()?.message}"))
+                    }
+                }
+                else -> {
+                    val url = "http://${device.ipv4Address}:${device.httpPort}/cgi-bin/configManager.cgi?action=setConfig&NTP.Address=$ntpServer&NTP.Port=$port&NTP.Enable=true&NTP.TimeZone=28"
+                    val res = sendHttpRequest(url, "GET", null, user, pass)
+                    if (res.isSuccess) {
+                        Result.success("Đã cài đặt NTP server: $ntpServer")
+                    } else {
+                        Result.failure(Exception("Không thể cấu hình NTP cho thiết bị."))
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
         }
     }
 

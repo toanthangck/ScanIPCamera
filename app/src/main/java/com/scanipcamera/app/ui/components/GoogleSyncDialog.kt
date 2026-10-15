@@ -41,12 +41,20 @@ fun GoogleSyncDialog(
     onSignOut: () -> Unit,
     onSyncToGoogle: () -> Unit,
     onRestoreFromJson: (String) -> Unit,
-    onExportBackup: () -> Unit
+    onExportBackup: () -> Unit,
+    onUpdateTechnicianProfile: (name: String, phone: String) -> Unit = { _, _ -> },
+    onUpdateDefaultCredentials: (user: String, camPass: String, nvrPass: String) -> Unit = { _, _, _ -> }
 ) {
     val context = LocalContext.current
     var showEditAccount by remember { mutableStateOf(false) }
     var emailInput by remember { mutableStateOf(user.email) }
     var nameInput by remember { mutableStateOf(user.displayName) }
+
+    var techNameInput by remember { mutableStateOf(user.technicianName) }
+    var techPhoneInput by remember { mutableStateOf(user.technicianPhone) }
+
+    var showCredentialsDialog by remember { mutableStateOf(false) }
+
     var showImportBox by remember { mutableStateOf(false) }
     var importJsonText by remember { mutableStateOf("") }
 
@@ -241,6 +249,115 @@ fun GoogleSyncDialog(
                         }
                     }
 
+                    // Technician Profile Configuration Card
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        text = "Hồ Sơ Kỹ Thuật Viên Phụ Trách",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.5.sp
+                                    )
+                                    Text(
+                                        text = "Tự động điền vào biên bản nghiệm thu & bàn giao công trình",
+                                        fontSize = 10.5.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = techNameInput,
+                                    onValueChange = { techNameInput = it },
+                                    label = { Text("Họ tên KTV") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1.2f)
+                                )
+                                OutlinedTextField(
+                                    value = techPhoneInput,
+                                    onValueChange = { techPhoneInput = it },
+                                    label = { Text("SĐT KTV") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End
+                            ) {
+                                Button(
+                                    onClick = {
+                                        onUpdateTechnicianProfile(techNameInput, techPhoneInput)
+                                        Toast.makeText(context, "Đã lưu thông tin KTV: $techNameInput ($techPhoneInput)", Toast.LENGTH_SHORT).show()
+                                    },
+                                    shape = RoundedCornerShape(8.dp)
+                                ) {
+                                    Icon(Icons.Default.Save, contentDescription = null, modifier = Modifier.size(16.dp))
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                    Text("Lưu Hồ Sơ Kỹ Thuật", fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+
+                    // Default Credentials Quick Card
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Key, contentDescription = null, tint = Color(0xFFD97706), modifier = Modifier.size(20.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Column {
+                                        Text(
+                                            text = "Mật Khẩu Mặc Định Thiết Bị",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 13.5.sp
+                                        )
+                                        Text(
+                                            text = "Admin: ${user.defaultUsername} • Cam: ${user.defaultCameraPassword} • NVR: ${user.defaultNvrPassword}",
+                                            fontSize = 10.5.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                                TextButton(onClick = { showCredentialsDialog = true }) {
+                                    Text("Cấu hình", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                    }
+
                     // Cloud Sync Stats Banner
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
@@ -410,5 +527,17 @@ fun GoogleSyncDialog(
                 }
             }
         }
+    }
+
+    if (showCredentialsDialog) {
+        DefaultCredentialsDialog(
+            currentUsername = user.defaultUsername,
+            currentCameraPassword = user.defaultCameraPassword,
+            currentNvrPassword = user.defaultNvrPassword,
+            onDismiss = { showCredentialsDialog = false },
+            onSave = { u, camP, nvrP ->
+                onUpdateDefaultCredentials(u, camP, nvrP)
+            }
+        )
     }
 }

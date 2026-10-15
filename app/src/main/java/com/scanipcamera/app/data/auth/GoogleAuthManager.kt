@@ -17,6 +17,11 @@ data class GoogleUser(
     val displayName: String = "Nguyễn Toàn Thắng",
     val photoUrl: String = "",
     val isLoggedIn: Boolean = true,
+    val technicianName: String = "Nguyễn Toàn Thắng",
+    val technicianPhone: String = "0965620086",
+    val defaultUsername: String = "admin",
+    val defaultCameraPassword: String = "admin123",
+    val defaultNvrPassword: String = "admin12345",
     val lastSyncTimestamp: Long = 0L,
     val autoSyncEnabled: Boolean = true
 )
@@ -33,6 +38,11 @@ class GoogleAuthManager(private val context: Context) {
         val name = prefs.getString("display_name", "Nguyễn Toàn Thắng") ?: "Nguyễn Toàn Thắng"
         val photo = prefs.getString("photo_url", "") ?: ""
         val loggedIn = prefs.getBoolean("is_logged_in", true)
+        val techName = prefs.getString("tech_name", "Nguyễn Toàn Thắng") ?: "Nguyễn Toàn Thắng"
+        val techPhone = prefs.getString("tech_phone", "0965620086") ?: "0965620086"
+        val defUser = prefs.getString("def_user", "admin") ?: "admin"
+        val defCamPass = prefs.getString("def_cam_pass", "admin123") ?: "admin123"
+        val defNvrPass = prefs.getString("def_nvr_pass", "admin12345") ?: "admin12345"
         val lastSync = prefs.getLong("last_sync_time", System.currentTimeMillis())
         val autoSync = prefs.getBoolean("auto_sync", true)
 
@@ -41,6 +51,11 @@ class GoogleAuthManager(private val context: Context) {
             displayName = name,
             photoUrl = photo,
             isLoggedIn = loggedIn,
+            technicianName = techName,
+            technicianPhone = techPhone,
+            defaultUsername = defUser,
+            defaultCameraPassword = defCamPass,
+            defaultNvrPassword = defNvrPass,
             lastSyncTimestamp = lastSync,
             autoSyncEnabled = autoSync
         )
@@ -60,6 +75,32 @@ class GoogleAuthManager(private val context: Context) {
             email = trimmedEmail,
             displayName = trimmedName,
             isLoggedIn = true
+        )
+    }
+
+    fun updateTechnicianProfile(name: String, phone: String) {
+        prefs.edit()
+            .putString("tech_name", name.trim())
+            .putString("tech_phone", phone.trim())
+            .apply()
+
+        _currentUser.value = _currentUser.value.copy(
+            technicianName = name.trim(),
+            technicianPhone = phone.trim()
+        )
+    }
+
+    fun updateDefaultCredentials(user: String, camPass: String, nvrPass: String) {
+        prefs.edit()
+            .putString("def_user", user.trim())
+            .putString("def_cam_pass", camPass.trim())
+            .putString("def_nvr_pass", nvrPass.trim())
+            .apply()
+
+        _currentUser.value = _currentUser.value.copy(
+            defaultUsername = user.trim(),
+            defaultCameraPassword = camPass.trim(),
+            defaultNvrPassword = nvrPass.trim()
         )
     }
 

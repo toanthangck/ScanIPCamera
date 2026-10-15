@@ -4,69 +4,89 @@
     android:viewportWidth="108"
     android:viewportHeight="108">
 
-    <!-- Wi-Fi / Scanner Waves (Broadcasting from Camera) -->
-    <!-- Wave 1 (Outer) -->
+    <!-- 4 High-Tech Corner Reticle / Target Scanner Brackets -->
     <path
         android:fillColor="#00000000"
         android:strokeColor="#00E5FF"
-        android:strokeWidth="2.5"
+        android:strokeWidth="3.2"
         android:strokeLineCap="round"
-        android:pathData="M34,28 A28,28 0 0,1 74,28" />
+        android:strokeLineJoin="round"
+        android:pathData="M24,36 L24,24 L36,24" />
 
-    <!-- Wave 2 (Inner) -->
     <path
         android:fillColor="#00000000"
-        android:strokeColor="#38BDF8"
-        android:strokeWidth="2.2"
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="3.2"
         android:strokeLineCap="round"
-        android:pathData="M41,34 A18,18 0 0,1 67,34" />
+        android:strokeLineJoin="round"
+        android:pathData="M72,24 L84,24 L84,36" />
 
-    <!-- Modern IP Security Camera Body (Bullet / PTZ style) -->
-    <!-- Base Mount & Neck -->
     <path
-        android:fillColor="#475569"
-        android:pathData="M50,78 L58,78 L56,86 L52,86 Z" />
-    <path
-        android:fillColor="#334155"
-        android:pathData="M44,86 L64,86 A3,3 0 0,1 67,89 L41,89 A3,3 0 0,1 44,86 Z" />
+        android:fillColor="#00000000"
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="3.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M24,72 L24,84 L36,84" />
 
-    <!-- Camera Main Body (Rounded Modern Housing) -->
     <path
-        android:fillColor="#F8FAFC"
-        android:pathData="M32,42 C32,38 36,36 42,36 L66,36 C72,36 76,38 76,42 L76,68 C76,74 70,78 64,78 L44,78 C38,78 32,74 32,68 Z" />
+        android:fillColor="#00000000"
+        android:strokeColor="#00E5FF"
+        android:strokeWidth="3.2"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M72,84 L84,84 L84,72" />
 
-    <!-- Camera Front Bezel / Dark Faceplate -->
+    <!-- Camera Stand / Pivot Mount -->
     <path
-        android:fillColor="#0F172A"
-        android:pathData="M36,44 C36,40 40,38 46,38 L62,38 C68,38 72,40 72,44 L72,66 C72,70 68,74 62,74 L46,74 C40,74 36,70 36,66 Z" />
-
-    <!-- Lens Outer Cyber Ring (Electric Cyan Glow) -->
+        android:fillColor="#94A3B8"
+        android:pathData="M50,75 L58,75 L56,83 L52,83 Z" />
     <path
-        android:fillColor="#00E5FF"
-        android:pathData="M54,45 A12,12 0 1,1 53.99,45 Z" />
+        android:fillColor="#64748B"
+        android:pathData="M43,83 L65,83 A2,2 0 0,1 67,85 L41,85 A2,2 0 0,1 43,83 Z" />
 
-    <!-- Lens Middle Ring (Deep Blue Glass) -->
-    <path
-        android:fillColor="#0284C7"
-        android:pathData="M54,47 A10,10 0 1,1 53.99,47 Z" />
-
-    <!-- Lens Inner Aperture (Dark Core) -->
-    <path
-        android:fillColor="#0F172A"
-        android:pathData="M54,50 A7,7 0 1,1 53.99,50 Z" />
-
-    <!-- Lens Glass Reflection Accent (Curved Highlight) -->
+    <!-- Modern Bullet/Dome Camera Body (Crisp Pure White) -->
     <path
         android:fillColor="#FFFFFF"
-        android:pathData="M51,51 A4,4 0 0,1 56,52 A5,5 0 0,0 52,50 Z" />
+        android:pathData="M33,36 C33,32 37,30 42,30 L66,30 C71,30 75,32 75,36 L75,69 C75,73 71,76 66,76 L42,76 C37,76 33,73 33,69 Z" />
 
-    <!-- Status Indicator LED (Glowing Green Active Dot) -->
+    <!-- Top Sunshade Visor Accent -->
+    <path
+        android:fillColor="#E2E8F0"
+        android:pathData="M31,33 C31,31 34,29 38,29 L70,29 C74,29 77,31 77,33 L77,36 L31,36 Z" />
+
+    <!-- Dark High-Gloss Camera Faceplate -->
+    <path
+        android:fillColor="#0F172A"
+        android:pathData="M37,40 C37,37 40,35 44,35 L64,35 C68,35 71,37 71,40 L71,67 C71,70 68,72 64,72 L44,72 C40,72 37,70 37,67 Z" />
+
+    <!-- Glowing Cyber Cyan Lens Outer Ring -->
+    <path
+        android:fillColor="#00E5FF"
+        android:pathData="M54,41 A13,13 0 1,1 53.99,41 Z" />
+
+    <!-- Optical Blue Lens Middle Glass -->
+    <path
+        android:fillColor="#1D4ED8"
+        android:pathData="M54,44 A10,10 0 1,1 53.99,44 Z" />
+
+    <!-- Deep Lens Pupil Core -->
+    <path
+        android:fillColor="#020617"
+        android:pathData="M54,48 A6,6 0 1,1 53.99,48 Z" />
+
+    <!-- Sharp White Lens Glint / Specular Highlight -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:pathData="M51,48 A3.5,3.5 0 0,1 56,50 A4.5,4.5 0 0,0 52,47 Z" />
+
+    <!-- Active Status Green LED -->
     <path
         android:fillColor="#10B981"
-        android:pathData="M66,43 A2,2 0 1,1 65.99,43 Z" />
+        android:pathData="M65,39 A2,2 0 1,1 64.99,39 Z" />
 
-    <!-- IR / Night Vision LEDs (Subtle Red Dots) -->
+    <!-- IR Night Vision Sensor Red Dot -->
     <path
         android:fillColor="#EF4444"
-        android:pathData="M42,43 A1.5,1.5 0 1,1 41.99,43 Z" />
+        android:pathData="M43,39 A1.5,1.5 0 1,1 42.99,39 Z" />
 </vector>
