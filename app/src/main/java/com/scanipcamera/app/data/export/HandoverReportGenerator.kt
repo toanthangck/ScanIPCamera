@@ -25,16 +25,29 @@ object HandoverReportGenerator {
         val devicesRows = project.devices.mapIndexed { index, dev ->
             val statusColor = if (dev.isActivated) "#059669" else "#D97706"
             val statusText = if (dev.isActivated) "Hoạt động tốt" else "Chưa active"
+            val location = if (dev.installLocation.isNotBlank()) dev.installLocation else "Vị trí ${index + 1}"
+            val modelName = if (dev.customName.isNotBlank()) dev.customName else dev.model.ifEmpty { "Camera IP" }
+            val credentials = "${dev.handoverUser} / ${dev.handoverPass}"
+
             """
             <tr>
                 <td style="text-align:center; font-weight:bold;">${index + 1}</td>
-                <td><span style="display:inline-block; padding:2px 6px; border-radius:4px; background:#F1F5F9; font-weight:bold; font-size:11px;">${dev.brand.displayName}</span> <b>${dev.model.ifEmpty { "Camera IP" }}</b></td>
+                <td style="font-weight:600; color:#0F172A;">${location}</td>
+                <td><span style="display:inline-block; padding:2px 6px; border-radius:4px; background:#F1F5F9; font-weight:bold; font-size:11px;">${dev.brand.displayName}</span> <b>${modelName}</b></td>
                 <td style="font-family:monospace; font-weight:bold; color:#0284C7;">${dev.ipv4Address}</td>
-                <td style="font-family:monospace; text-align:center;">${dev.httpPort} / ${dev.sdkPort}</td>
                 <td style="font-family:monospace; font-size:11px;">${dev.macAddress.ifEmpty { "N/A" }}</td>
                 <td style="font-family:monospace; font-size:11px; font-weight:bold; color:#0369A1;">${dev.serialNumber.ifEmpty { "N/A" }}</td>
+                <td style="font-family:monospace; font-size:11px; color:#475569;">${credentials}</td>
                 <td style="text-align:center;"><span style="color:${statusColor}; font-weight:bold; font-size:11px;">● ${statusText}</span></td>
             </tr>
+            """.trimIndent()
+        }.joinToString("\n")
+
+        val checklistHtml = project.handoverChecklist.map { item ->
+            """
+            <div style="margin-bottom:5px; font-size:12px;">
+                <span style="color:#059669; font-weight:bold;">&#10004;</span> ${item}
+            </div>
             """.trimIndent()
         }.joinToString("\n")
 
@@ -47,23 +60,24 @@ object HandoverReportGenerator {
             <title>Biên bản nghiệm thu & Bàn giao hệ thống Camera</title>
             <style>
                 body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #1E293B; margin: 20px; line-height: 1.5; font-size: 13px; }
-                .header { border-bottom: 3px solid #0284C7; padding-bottom: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+                .header { border-bottom: 3px solid #0284C7; padding-bottom: 12px; margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; }
                 .company-title { font-size: 18px; font-weight: 800; color: #0369A1; text-transform: uppercase; margin: 0; }
-                .company-sub { font-size: 12px; color: #64748B; margin: 4px 0 0 0; }
-                .doc-title { text-align: center; font-size: 18px; font-weight: 800; color: #0F172A; text-transform: uppercase; margin: 20px 0 15px 0; }
-                .info-box { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px; margin-bottom: 20px; }
+                .company-sub { font-size: 12px; color: #64748B; margin: 3px 0 0 0; }
+                .doc-title { text-align: center; font-size: 19px; font-weight: 800; color: #0F172A; text-transform: uppercase; margin: 15px 0 12px 0; letter-spacing: 0.5px; }
+                .info-box { background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px; padding: 12px; margin-bottom: 18px; }
                 .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
                 .info-item { font-size: 12.5px; }
                 .info-label { font-weight: bold; color: #475569; }
                 table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
-                th, td { border: 1px solid #CBD5E1; padding: 8px 10px; text-align: left; }
+                th, td { border: 1px solid #CBD5E1; padding: 7px 9px; text-align: left; }
                 th { background-color: #F1F5F9; color: #334155; font-weight: 700; text-transform: uppercase; font-size: 11px; }
-                .notice-box { background: #FEF3C7; border-left: 4px solid #F59E0B; padding: 10px 14px; margin-top: 20px; font-size: 12px; border-radius: 4px; }
-                .signatures { display: grid; grid-template-columns: 1fr 1fr; margin-top: 40px; text-align: center; }
+                .notice-box { background: #FEF3C7; border-left: 4px solid #F59E0B; padding: 10px 14px; margin-top: 18px; font-size: 12px; border-radius: 4px; }
+                .checklist-box { background: #F0FDF4; border-left: 4px solid #10B981; padding: 10px 14px; margin-top: 15px; border-radius: 4px; }
+                .signatures { display: grid; grid-template-columns: 1fr 1fr; margin-top: 35px; text-align: center; }
                 .sign-col { font-weight: bold; }
                 .sign-note { font-style: italic; font-weight: normal; font-size: 11px; color: #64748B; margin-top: 4px; }
-                .sign-space { height: 70px; }
-                .footer { margin-top: 30px; border-top: 1px solid #E2E8F0; padding-top: 10px; font-size: 11px; color: #94A3B8; text-align: center; }
+                .sign-space { height: 65px; }
+                .footer { margin-top: 25px; border-top: 1px solid #E2E8F0; padding-top: 8px; font-size: 11px; color: #94A3B8; text-align: center; }
             </style>
         </head>
         <body>
@@ -86,10 +100,10 @@ object HandoverReportGenerator {
                     <div class="info-item"><span class="info-label">Thời gian bàn giao:</span> ${dateStr}</div>
                     <div class="info-item"><span class="info-label">Khách hàng:</span> <b>${project.customerName.ifEmpty { "Anh/Chị khách hàng" }}</b></div>
                     <div class="info-item"><span class="info-label">SĐT liên hệ:</span> ${project.customerPhone.ifEmpty { "N/A" }}</div>
-                    <div class="info-item"><span class="info-label">Địa chỉ lắp đặt:</span> ${project.address.ifEmpty { "Theo hợp đồng" }}</div>
-                    <div class="info-item"><span class="info-label">Kỹ thuật viên bàn giao:</span> <b>${project.technicianName}</b> (${project.technicianPhone})</div>
-                    <div class="info-item"><span class="info-label">Mạng Wi-Fi:</span> ${project.wifiSsid.ifEmpty { "LAN" }}</div>
-                    <div class="info-item"><span class="info-label">IP WAN (Public):</span> ${project.wanIp.ifEmpty { "N/A" }}</div>
+                    <div class="info-item"><span class="info-label">Địa chỉ lắp đặt:</span> ${project.address.ifEmpty { "Theo địa chỉ công trình" }}</div>
+                    <div class="info-item"><span class="info-label">Thời hạn bảo hành:</span> <b>${project.warrantyMonths} tháng</b> chính hãng</div>
+                    <div class="info-item"><span class="info-label">Kỹ thuật viên:</span> <b>${project.technicianName}</b> (${project.technicianPhone})</div>
+                    <div class="info-item"><span class="info-label">Mạng Wi-Fi / IP WAN:</span> ${project.wifiSsid.ifEmpty { "LAN" }} &bull; ${project.wanIp.ifEmpty { "N/A" }}</div>
                 </div>
             </div>
 
@@ -97,13 +111,14 @@ object HandoverReportGenerator {
             <table>
                 <thead>
                     <tr>
-                        <th style="width:30px;">STT</th>
-                        <th>Tên thiết bị / Model</th>
-                        <th>Địa chỉ IP</th>
-                        <th>Port (Web/SDK)</th>
-                        <th>Địa chỉ MAC</th>
-                        <th>Số Serial (S/N)</th>
-                        <th>Trạng thái</th>
+                        <th style="width:25px; text-align:center;">STT</th>
+                        <th style="width:110px;">Vị trí lắp</th>
+                        <th>Hãng &amp; Thiết bị</th>
+                        <th style="width:95px;">Địa chỉ IP</th>
+                        <th style="width:110px;">Địa chỉ MAC</th>
+                        <th style="width:115px;">Mã Serial</th>
+                        <th style="width:105px;">Tài khoản/MK</th>
+                        <th style="width:85px; text-align:center;">Tình trạng</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -111,32 +126,37 @@ object HandoverReportGenerator {
                 </tbody>
             </table>
 
-            <div class="notice-box">
-                <b>📌 HƯỚNG DẪN BẢO MẬT &amp; BẢO HÀNH CHO KHÁCH HÀNG:</b>
-                <ul style="margin: 4px 0 0 16px; padding: 0;">
-                    <li>Vui lòng đổi mật khẩu tài khoản quản trị (admin) và không chia sẻ mật khẩu cho người ngoài.</li>
-                    <li>Sử dụng số Serial để đăng ký và quản lý xem từ xa trên ứng dụng điện thoại (Hik-Connect / DMSS / EZVIZ / Imou).</li>
-                    <li>Mọi thắc mắc kỹ thuật hoặc bảo hành, vui lòng liên hệ Hotline: <b>0965.620.086</b> hoặc truy cập <b>cameratrungthuc.com</b>.</li>
-                </ul>
+            <div class="checklist-box">
+                <b style="color:#065F46; font-size:12.5px;">2. Các hạng mục kỹ thuật đã nghiệm thu:</b>
+                <div style="margin-top:6px;">
+                    $checklistHtml
+                </div>
             </div>
+
+            ${if (project.notes.isNotBlank()) """
+            <div class="notice-box">
+                <b>3. Ghi chú &amp; Lưu ý kỹ thuật cho khách hàng:</b><br/>
+                ${project.notes.replace("\n", "<br/>")}
+            </div>
+            """ else ""}
 
             <div class="signatures">
                 <div class="sign-col">
                     ĐẠI DIỆN KHÁCH HÀNG
                     <div class="sign-note">(Ký và ghi rõ họ tên)</div>
                     <div class="sign-space"></div>
-                    <div>${project.customerName.ifEmpty { "Khách hàng" }}</div>
+                    <div><b>${project.customerName.ifEmpty { "Khách hàng nghiệm thu" }}</b></div>
                 </div>
                 <div class="sign-col">
-                    KỸ THUẬT VIÊN NGHIỆM THU
-                    <div class="sign-note">(Ký và xác nhận hoàn tất)</div>
+                    ĐẠI DIỆN ĐƠN VỊ THI CÔNG
+                    <div class="sign-note">(Ký và ghi rõ họ tên)</div>
                     <div class="sign-space"></div>
-                    <div>${project.technicianName}</div>
+                    <div><b>${project.technicianName}</b></div>
                 </div>
             </div>
 
             <div class="footer">
-                Phần mềm Scan IP Camera & NVR &bull; Thuộc sở hữu: toanhangts@gmail.com &bull; Hotline: 0965.620.086 &bull; Website: cameratrungthuc.com - cameratuson.com
+                Hệ thống camera an ninh được bảo hành chính hãng ${project.warrantyMonths} tháng &bull; Hỗ trợ kỹ thuật 24/7: 0965.620.086 &bull; cameratrungthuc.com
             </div>
         </body>
         </html>
@@ -144,44 +164,83 @@ object HandoverReportGenerator {
     }
 
     /**
-     * Print HTML document to PDF or physical printer using Android PrintManager
+     * Generates a clean text summary ready to be sent to the homeowner via Zalo/SMS
      */
-    fun printReport(context: Context, htmlContent: String, jobName: String = "BienBanBanGiaoCamera") {
-        val webView = WebView(context).apply {
-            webViewClient = object : WebViewClient() {
-                override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean = false
-                override fun onPageFinished(view: WebView?, url: String?) {
-                    val printManager = context.getSystemService(Context.PRINT_SERVICE) as? PrintManager
-                    val printAdapter = createPrintDocumentAdapter(jobName)
-                    printManager?.print(jobName, printAdapter, PrintAttributes.Builder().build())
-                }
-            }
-            loadDataWithBaseURL(null, htmlContent, "text/html", "UTF-8", null)
-        }
+    fun generateZaloSummaryText(project: SiteProject): String {
+        val dateFormat = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+        val dateStr = dateFormat.format(Date(project.createdAt))
+
+        val devLines = project.devices.mapIndexed { i, d ->
+            val loc = if (d.installLocation.isNotBlank()) d.installLocation else "Camera ${i + 1}"
+            "📍 ${i + 1}. $loc: ${d.brand.displayName} ${d.model}\n   - IP: ${d.ipv4Address} | TK: ${d.handoverUser} | MK: ${d.handoverPass}\n   - Serial: ${d.serialNumber.ifEmpty { "N/A" }}"
+        }.joinToString("\n\n")
+
+        return """
+📋 BÀN GIAO HỆ THỐNG CAMERA AN NINH
+Công trình: ${project.siteName}
+Khách hàng: ${project.customerName} - ${project.customerPhone}
+Ngày bàn giao: $dateStr - BH: ${project.warrantyMonths} tháng
+
+DANH SÁCH THIẾT BỊ & TÀI KHOẢN:
+$devLines
+
+${if (project.notes.isNotBlank()) "LƯU Ý:\n${project.notes}\n" else ""}
+Kỹ thuật viên phụ trách: ${project.technicianName}
+Hotline hỗ trợ: 0965.620.086
+Website: cameratrungthuc.com - cameratuson.com
+        """.trimIndent()
     }
 
     /**
-     * Share HTML Report file via Android Share sheet
+     * Prints the HTML report via Android PrintManager.
      */
-    fun shareHtmlReport(context: Context, project: SiteProject) {
-        try {
-            val html = generateHtmlReport(project)
-            val cacheFile = File(context.cacheDir, "BienBan_${project.siteName.replace(" ", "_")}.html")
-            cacheFile.writeText(html, Charsets.UTF_8)
+    fun printReport(context: Context, project: SiteProject) {
+        val webView = WebView(context)
+        webView.webViewClient = object : WebViewClient() {
+            override fun onPageFinished(view: WebView?, url: String?) {
+                val printManager = context.getSystemService(Context.PRINT_SERVICE) as? PrintManager
+                val printAdapter = webView.createPrintDocumentAdapter("BienBanBanGiao_${project.siteName}")
+                val printAttributes = PrintAttributes.Builder()
+                    .setMediaSize(PrintAttributes.MediaSize.ISO_A4)
+                    .setResolution(PrintAttributes.Resolution("id", "print", 300, 300))
+                    .setMinMargins(PrintAttributes.Margins.NO_MARGINS)
+                    .build()
+                printManager?.print("Biên bản bàn giao - ${project.siteName}", printAdapter, printAttributes)
+            }
+        }
+        val htmlContent = generateHtmlReport(project)
+        webView.loadDataWithBaseURL(null, htmlContent, "text/html", "UTF-8", null)
+    }
 
-            val uri: Uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", cacheFile)
-            val intent = Intent(Intent.ACTION_SEND).apply {
+    /**
+     * Saves the HTML report to a temporary cache file and opens the Android Share Sheet.
+     */
+    fun shareReport(context: Context, project: SiteProject) {
+        try {
+            val htmlContent = generateHtmlReport(project)
+            val cacheDir = File(context.cacheDir, "reports")
+            if (!cacheDir.exists()) cacheDir.mkdirs()
+
+            val safeSiteName = project.siteName.replace("[^a-zA-Z0-9.-]".toRegex(), "_")
+            val reportFile = File(cacheDir, "BienBan_${safeSiteName}.html")
+            reportFile.writeText(htmlContent, Charsets.UTF_8)
+
+            val uri: Uri = FileProvider.getUriForFile(
+                context,
+                "${context.packageName}.fileprovider",
+                reportFile
+            )
+
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
                 type = "text/html"
                 putExtra(Intent.EXTRA_STREAM, uri)
-                putExtra(Intent.EXTRA_SUBJECT, "Biên bản bàn giao: ${project.siteName}")
+                putExtra(Intent.EXTRA_SUBJECT, "Biên bản nghiệm thu & Bàn giao - ${project.siteName}")
+                putExtra(Intent.EXTRA_TEXT, "Kính gửi quý khách biên bản bàn giao hệ thống camera an ninh cho ${project.siteName}.\nHotline hỗ trợ: 0965.620.086")
                 addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
-            context.startActivity(Intent.createChooser(intent, "Chia sẻ Biên bản bàn giao"))
+            context.startActivity(Intent.createChooser(shareIntent, "Chia sẻ Biên bản Bàn giao"))
         } catch (e: Exception) {
-            // Fallback to text share
-            val textReport = DeviceExportHelper.generateTextReport(project.devices)
-            DeviceExportHelper.shareReport(context, textReport)
+            e.printStackTrace()
         }
     }
 }

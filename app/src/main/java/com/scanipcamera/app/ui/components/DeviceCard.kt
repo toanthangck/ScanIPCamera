@@ -202,8 +202,13 @@ fun DeviceCard(
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                     shape = RoundedCornerShape(4.dp)
                 ) {
+                    val portText = if (device.sdkPort > 0 && device.sdkPort != device.httpPort) {
+                        "Port: ${device.httpPort} / ${device.sdkPort}"
+                    } else {
+                        "Port: ${device.httpPort}"
+                    }
                     Text(
-                        text = "Port: ${device.httpPort} / ${device.sdkPort}",
+                        text = portText,
                         fontSize = 10.5.sp,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.SemiBold,

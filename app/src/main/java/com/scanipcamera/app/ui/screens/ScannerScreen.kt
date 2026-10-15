@@ -58,6 +58,8 @@ fun ScannerScreen(
     val userMessage by viewModel.userMessage.collectAsState()
     val conflictingIps by viewModel.conflictingIps.collectAsState()
     val siteProjects by viewModel.siteProjects.collectAsState()
+    val googleUser by viewModel.googleUser.collectAsState()
+    val editingProject by viewModel.editingProject.collectAsState()
 
     var defaultUser by remember { mutableStateOf("admin") }
     var defaultPassword by remember { mutableStateOf("admin123") }
@@ -69,6 +71,7 @@ fun ScannerScreen(
     var showBatchDialog by remember { mutableStateOf(false) }
     var showHandoverDialog by remember { mutableStateOf(false) }
     var showSiteProjectsDialog by remember { mutableStateOf(false) }
+    var showGoogleSyncDialog by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -140,7 +143,27 @@ fun ScannerScreen(
                         Icon(imageVector = Icons.Default.Share, contentDescription = "Xuất báo cáo")
                     }
 
-                    // 5. Refresh button
+                    // 5. Google Account & Cloud Sync profile button
+                    IconButton(
+                        onClick = { showGoogleSyncDialog = true }
+                    ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = Color(0xFF1A73E8),
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Text(
+                                    text = googleUser.displayName.take(1).uppercase(),
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.5.sp
+                                )
+                            }
+                        }
+                    }
+
+                    // 6. Refresh button
                     IconButton(
                         onClick = { viewModel.startScanning() },
                         enabled = !isScanning
@@ -287,6 +310,24 @@ fun ScannerScreen(
                         Icon(Icons.Default.FolderSpecial, contentDescription = null, tint = Color(0xFF7C3AED), modifier = Modifier.size(13.dp))
                         Spacer(modifier = Modifier.width(3.dp))
                         Text("Dự án (${siteProjects.size})", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF7C3AED), maxLines = 1)
+                    }
+                }
+
+                Surface(
+                    onClick = { showGoogleSyncDialog = true },
+                    shape = RoundedCornerShape(7.dp),
+                    color = Color(0xFF4285F4).copy(alpha = 0.12f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF4285F4).copy(alpha = 0.55f)),
+                    modifier = Modifier.weight(0.85f).height(30.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(Icons.Default.CloudSync, contentDescription = null, tint = Color(0xFF1A73E8), modifier = Modifier.size(13.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("Google", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A73E8), maxLines = 1)
                     }
                 }
             }
@@ -928,16 +969,21 @@ fun ScannerScreen(
         )
     }
 
-    // Handover Report Dialog (Print / PDF / Save site)
-    if (showHandoverDialog) {
+    // Handover Report & Add/Edit Project Dialog
+    if (showHandoverDialog || editingProject != null) {
         HandoverReportDialog(
             devices = devices,
             wanIp = wanInfo?.ip ?: "",
             wifiSsid = wifiInfo.ssid,
-            onDismiss = { showHandoverDialog = false },
+            initialProject = editingProject,
+            onDismiss = {
+                showHandoverDialog = false
+                viewModel.closeEditProjectDialog()
+            },
             onSaveProject = { project ->
                 viewModel.saveSiteProject(project)
                 showHandoverDialog = false
+                viewModel.closeEditProjectDialog()
             }
         )
     }
@@ -947,7 +993,45 @@ fun ScannerScreen(
         SiteProjectsDialog(
             projects = siteProjects,
             onDismiss = { showSiteProjectsDialog = false },
-            onDeleteProject = { id -> viewModel.deleteSiteProject(id) }
+            onAddNewProject = {
+                showSiteProjectsDialog = false
+                viewModel.closeEditProjectDialog()
+                showHandoverDialog = true
+            },
+            onEditProject = { project ->
+                showSiteProjectsDialog = false
+                viewModel.openEditProjectDialog(project)
+            },
+            onDeleteProject = { id -> viewModel.deleteSiteProject(id) },
+            onOpenGoogleSync = {
+                showSiteProjectsDialog = false
+                showGoogleSyncDialog = true
+            }
+        )
+    }
+
+    // Google Account & Cloud Sync Dialog
+    if (showGoogleSyncDialog) {
+        val context = androidx.compose.ui.platform.LocalContext.current
+        GoogleSyncDialog(
+            user = googleUser,
+            projectCount = siteProjects.size,
+            onDismiss = { showGoogleSyncDialog = false },
+            onSignIn = { email, name -> viewModel.signInGoogle(email, name) },
+            onSignOut = { viewModel.signOutGoogle() },
+            onSyncToGoogle = {
+                val intent = viewModel.syncAllToGoogleCloud()
+                if (intent != null) {
+                    context.startActivity(android.content.Intent.createChooser(intent, "Sao lưu dự án lên Google Drive"))
+                }
+            },
+            onRestoreFromJson = { json -> viewModel.restoreBackupFromJson(json) },
+            onExportBackup = {
+                val intent = viewModel.syncAllToGoogleCloud()
+                if (intent != null) {
+                    context.startActivity(android.content.Intent.createChooser(intent, "Chia sẻ file sao lưu"))
+                }
+            }
         )
     }
 }

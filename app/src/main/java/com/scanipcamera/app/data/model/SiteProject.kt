@@ -11,5 +11,14 @@ data class SiteProject(
     val createdAt: Long = System.currentTimeMillis(),
     val wanIp: String = "",
     val wifiSsid: String = "",
-    val devices: List<CameraDevice> = emptyList()
+    val warrantyMonths: Int = 24,
+    val notes: String = "",
+    val handoverChecklist: List<String> = listOf(
+        "Đã cài đặt xem qua điện thoại cho chủ nhà",
+        "Đã hướng dẫn xem lại video và đổi mật khẩu",
+        "Đã kiểm tra góc nhìn ban ngày và hồng ngoại ban đêm",
+        "Đã bàn giao đầy đủ nguồn và phụ kiện"
+    ),
+    val devices: List<CameraDevice> = emptyList(),
+    val lastSyncTime: Long = 0L
 )

@@ -26,7 +26,11 @@ data class CameraDevice(
     val sdkPort: Int = 8000, // Hikvision: 8000, Dahua: 37777
     val rtspPort: Int = 554,
     val firmwareVersion: String = "",
-    val rawProtocol: String = "UNKNOWN" // SADP, DHIP, ONVIF, PING/PORT
+    val rawProtocol: String = "UNKNOWN", // SADP, DHIP, ONVIF, PING/PORT
+    val customName: String = "",
+    val installLocation: String = "", // e.g. "Cổng chính", "Phòng khách"
+    val handoverUser: String = "admin",
+    val handoverPass: String = "admin123"
 ) {
     companion object {
         fun detectCategoryAndChannels(model: String, description: String = ""): Pair<DeviceCategory, Int> {

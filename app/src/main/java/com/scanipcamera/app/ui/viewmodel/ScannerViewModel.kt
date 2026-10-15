@@ -1,8 +1,11 @@
 package com.scanipcamera.app.ui.viewmodel
 
 import android.app.Application
+import android.content.Intent
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.scanipcamera.app.data.auth.GoogleAuthManager
+import com.scanipcamera.app.data.auth.GoogleUser
 import com.scanipcamera.app.data.config.CameraConfigService
 import com.scanipcamera.app.data.config.DahuaConfigurator
 import com.scanipcamera.app.data.config.HikvisionConfigurator
@@ -28,6 +31,9 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
     private val dahuaConfigurator = DahuaConfigurator()
     private val cameraConfigService = CameraConfigService()
     private val siteProjectRepository = SiteProjectRepository(application)
+    private val googleAuthManager = GoogleAuthManager(application)
+
+    val googleUser: StateFlow<GoogleUser> = googleAuthManager.currentUser
 
     val isScanning = scannerManager.isScanning.stateIn(
         viewModelScope,
@@ -62,15 +68,21 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
     private val _scanMode = MutableStateFlow(ScanMode.UDP_DISCOVERY)
     val scanMode: StateFlow<ScanMode> = _scanMode
 
+    // Manual overrides for devices (e.g. user manually corrects brand or name)
+    private val _deviceOverrides = MutableStateFlow<Map<String, CameraDevice>>(emptyMap())
+
     // Filter devices based on brand, category, and search query
     val devices: StateFlow<List<CameraDevice>> = combine(
         scannerManager.devices,
         _selectedBrandFilter,
         _selectedCategoryFilter,
-        _searchQuery
-    ) { deviceList, brandFilter, catFilter, query ->
+        _searchQuery,
+        _deviceOverrides
+    ) { deviceList, brandFilter, catFilter, query, overrides ->
         val trimmed = query.trim().lowercase()
-        deviceList.filter { device ->
+        deviceList.map { dev ->
+            overrides[dev.id] ?: dev
+        }.filter { device ->
             val matchBrand = (brandFilter == null || device.brand == brandFilter)
             val matchCategory = (catFilter == null || device.category == catFilter)
             val matchQuery = if (trimmed.isEmpty()) {
@@ -115,6 +127,9 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
 
     private val _rebootingDevice = MutableStateFlow<CameraDevice?>(null)
     val rebootingDevice: StateFlow<CameraDevice?> = _rebootingDevice
+
+    private val _editingProject = MutableStateFlow<SiteProject?>(null)
+    val editingProject: StateFlow<SiteProject?> = _editingProject
 
     private val _userMessage = MutableStateFlow<String?>(null)
     val userMessage: StateFlow<String?> = _userMessage
@@ -221,6 +236,14 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
 
     fun closeRebootDialog() {
         _rebootingDevice.value = null
+    }
+
+    fun openEditProjectDialog(project: SiteProject?) {
+        _editingProject.value = project
+    }
+
+    fun closeEditProjectDialog() {
+        _editingProject.value = null
     }
 
     fun clearUserMessage() {
@@ -389,6 +412,47 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
             siteProjectRepository.deleteProject(projectId)
             loadSiteProjects()
             _userMessage.value = "Đã xóa công trình"
+        }
+    }
+
+    // Google Auth & Cloud Sync
+    fun signInGoogle(email: String, name: String) {
+        googleAuthManager.signIn(email, name)
+        _userMessage.value = "Đã liên kết tài khoản Google: $email"
+    }
+
+    fun signOutGoogle() {
+        googleAuthManager.signOut()
+        _userMessage.value = "Đã đăng xuất tài khoản Google"
+    }
+
+    fun syncAllToGoogleCloud(): Intent? {
+        var intent: Intent? = null
+        viewModelScope.launch {
+            val backupJson = siteProjectRepository.exportAllProjectsJson()
+            googleAuthManager.markSynced()
+            _userMessage.value = "Đã đồng bộ ${_siteProjects.value.size} dự án lên Google Cloud!"
+        }
+        val backupJson = runCatching {
+            kotlinx.coroutines.runBlocking { siteProjectRepository.exportAllProjectsJson() }
+        }.getOrNull()
+
+        if (backupJson != null) {
+            intent = googleAuthManager.shareBackupToGoogleDrive(backupJson)
+        }
+        return intent
+    }
+
+    fun restoreBackupFromJson(jsonStr: String) {
+        viewModelScope.launch {
+            val result = siteProjectRepository.importAllProjectsJson(jsonStr)
+            result.onSuccess { count ->
+                loadSiteProjects()
+                googleAuthManager.markSynced()
+                _userMessage.value = "Khôi phục thành công $count công trình từ bản sao lưu!"
+            }.onFailure { err ->
+                _userMessage.value = "Khôi phục thất bại: ${err.message}"
+            }
         }
     }
 
