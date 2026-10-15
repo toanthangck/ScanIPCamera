@@ -22,7 +22,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -53,177 +52,191 @@ fun DeviceCard(
 
     val isRecorder = (device.category == DeviceCategory.NVR || device.category == DeviceCategory.DVR)
 
-    // Palette tokens according to UI UX Pro Max standards
-    val badgeTopColor = if (isRecorder) Color(0xFF0284C7) else Color(0xFFEA580C)
-    val badgeBottomColor = if (isRecorder) Color(0xFF38BDF8) else Color(0xFFF97316)
-
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(8.dp),
+        shape = RoundedCornerShape(10.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
     ) {
-        Row(
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(IntrinsicSize.Min),
-            verticalAlignment = Alignment.CenterVertically
+                .padding(horizontal = 10.dp, vertical = 8.dp)
         ) {
-            // Left block: Compact ConfigTool Mobile style (Model on top, Ports on bottom)
-            Column(
-                modifier = Modifier
-                    .width(66.dp)
-                    .fillMaxHeight(),
-                horizontalAlignment = Alignment.CenterHorizontally
+            // ROW 1: BRAND BADGE + FULL MODEL NAME + STATUS BADGES
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                // Top: Model name
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .background(badgeTopColor)
-                        .padding(horizontal = 2.dp, vertical = 2.dp),
-                    contentAlignment = Alignment.Center
+                // Brand Badge (e.g. DAHUA, HIKVISION, EZVIZ)
+                Surface(
+                    shape = RoundedCornerShape(4.dp),
+                    color = device.brand.badgeColor
                 ) {
                     Text(
-                        text = device.model.ifEmpty { device.brand.displayName },
+                        text = device.brand.displayName.uppercase(),
                         color = Color.White,
-                        fontWeight = FontWeight.Bold,
                         fontSize = 9.sp,
-                        textAlign = TextAlign.Center,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
+                        fontWeight = FontWeight.ExtraBold,
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
                     )
                 }
 
-                // Bottom: Ports stacked (e.g. 80 / 37777)
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(badgeBottomColor)
-                        .padding(vertical = 1.5.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                Spacer(modifier = Modifier.width(6.dp))
+
+                // Full Camera / NVR Model Code (NO TRUNCATION!)
+                Text(
+                    text = device.model.ifEmpty {
+                        if (isRecorder) "Đầu ghi hình ${device.brand.displayName}" else "Camera IP ${device.brand.displayName}"
+                    },
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Spacer(modifier = Modifier.width(4.dp))
+
+                // Channel Badge if NVR / DVR
+                if (device.channelCount > 0) {
+                    Surface(
+                        color = Color(0xFF0284C7).copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Text(
+                            text = "${device.channelCount} CH",
+                            color = Color(0xFF0284C7),
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.5.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
+
+                // Subnet Mismatch Warning Badge
+                if (!isSameSubnet && phoneIp.isNotBlank()) {
+                    Surface(
+                        color = SubnetMismatchColor.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Text(
+                            text = "Lệch IP",
+                            color = SubnetMismatchColor,
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.5.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
+
+                // Unactivated Device Warning Badge
+                if (!device.isActivated) {
+                    Surface(
+                        color = StatusInactive.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Text(
+                            text = "Chưa active",
+                            color = StatusInactive,
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.5.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // ROW 2: IP ADDRESS + PORTS
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                // IP Address (Bold Monospace)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        modifier = Modifier
+                            .size(6.dp)
+                            .clip(CircleShape)
+                            .background(if (isSameSubnet) Color(0xFF10B981) else Color(0xFFF59E0B))
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = device.ipv4Address,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 14.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+
+                // Ports: HTTP and SDK/TCP
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(4.dp)
                 ) {
                     Text(
-                        text = "${device.httpPort} / ${device.sdkPort}",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 8.sp,
+                        text = "Port: ${device.httpPort} / ${device.sdkPort}",
+                        fontSize = 10.5.sp,
                         fontFamily = FontFamily.Monospace,
-                        textAlign = TextAlign.Center,
-                        maxLines = 1
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
                     )
                 }
             }
 
-            // Center block: IP Address, MAC, S/N, and Badges (Compact 3 rows)
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 6.dp, vertical = 2.dp),
-                verticalArrangement = Arrangement.Center
+            Spacer(modifier = Modifier.height(3.dp))
+
+            // ROW 3: MAC ADDRESS + SERIAL NUMBER (Clickable to copy)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // Row 1: IP & Badges
+                // MAC Address (Click to copy)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Text(
-                        text = device.ipv4Address,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.5.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-
-                    if (device.channelCount > 0) {
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Surface(
-                            color = Color(0xFF0284C7).copy(alpha = 0.15f),
-                            shape = RoundedCornerShape(3.dp)
-                        ) {
-                            Text(
-                                text = "${device.channelCount} CH",
-                                color = Color(0xFF0284C7),
-                                fontSize = 8.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.5.dp)
-                            )
+                    modifier = Modifier
+                        .clickable {
+                            if (device.macAddress.isNotBlank()) {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("MAC Address", device.macAddress))
+                                Toast.makeText(context, "Đã sao chép MAC: ${device.macAddress}", Toast.LENGTH_SHORT).show()
+                            }
                         }
-                    }
-
-                    if (!isSameSubnet && phoneIp.isNotBlank()) {
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Surface(
-                            color = SubnetMismatchColor.copy(alpha = 0.15f),
-                            shape = RoundedCornerShape(3.dp)
-                        ) {
-                            Text(
-                                text = "Lệch IP",
-                                color = SubnetMismatchColor,
-                                fontSize = 8.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.5.dp)
-                            )
-                        }
-                    }
-
-                    if (!device.isActivated) {
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Surface(
-                            color = StatusInactive.copy(alpha = 0.15f),
-                            shape = RoundedCornerShape(3.dp)
-                        ) {
-                            Text(
-                                text = "Chưa kích hoạt",
-                                color = StatusInactive,
-                                fontSize = 8.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.5.dp)
-                            )
-                        }
-                    }
-                }
-
-                // Row 2: MAC Address
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.clickable {
-                        if (device.macAddress.isNotBlank()) {
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText("MAC Address", device.macAddress))
-                            Toast.makeText(context, "Đã sao chép MAC: ${device.macAddress}", Toast.LENGTH_SHORT).show()
-                        } else {
-                            onDiagnosticClick()
-                        }
-                    }
                 ) {
                     Text(
                         text = "MAC: ${device.macAddress.ifEmpty { "Chưa có MAC" }}",
-                        fontSize = 10.sp,
+                        fontSize = 10.5.sp,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
-                // Row 3: Serial Number (Highlighted in bright cyan)
+                // Serial Number (Cyan Tech, Click to copy)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.clickable {
-                        if (device.serialNumber.isNotBlank()) {
-                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                            clipboard.setPrimaryClip(ClipData.newPlainText("Serial Number", device.serialNumber))
-                            Toast.makeText(context, "Đã sao chép S/N: ${device.serialNumber}", Toast.LENGTH_SHORT).show()
-                        } else {
-                            onDiagnosticClick()
+                    modifier = Modifier
+                        .clickable {
+                            if (device.serialNumber.isNotBlank()) {
+                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                clipboard.setPrimaryClip(ClipData.newPlainText("Serial Number", device.serialNumber))
+                                Toast.makeText(context, "Đã sao chép S/N: ${device.serialNumber}", Toast.LENGTH_SHORT).show()
+                            }
                         }
-                    }
                 ) {
                     Text(
                         text = "S/N: ${device.serialNumber.ifEmpty { "N/A" }}",
-                        fontSize = 10.sp,
+                        fontSize = 10.5.sp,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF0284C7)
@@ -231,132 +244,188 @@ fun DeviceCard(
                 }
             }
 
-            // Right block: 2x2 Circular action buttons (24dp size, ultra space-efficient)
-            Column(
-                modifier = Modifier.padding(end = 6.dp, top = 2.dp, bottom = 2.dp),
-                verticalArrangement = Arrangement.spacedBy(3.dp)
+            Spacer(modifier = Modifier.height(6.dp))
+
+            // ROW 4: 4 CLEAR ACTION BUTTONS - ABSOLUTELY NO OVERLAPPING, ZERO MISCLICKS!
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                    // 1. Edit IP (Pencil)
-                    IconButton(
-                        onClick = onConfigureClick,
-                        modifier = Modifier
-                            .size(24.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF0284C7))
+                // Button 1: Đổi IP (Configure IP)
+                Surface(
+                    onClick = onConfigureClick,
+                    shape = RoundedCornerShape(6.dp),
+                    color = Color(0xFF0284C7).copy(alpha = 0.12f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF0284C7).copy(alpha = 0.45f)),
+                    modifier = Modifier.weight(1f).height(31.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
                     ) {
                         Icon(
                             imageVector = Icons.Default.Edit,
-                            contentDescription = "Đổi IP",
-                            tint = Color.White,
-                            modifier = Modifier.size(12.dp)
+                            contentDescription = null,
+                            tint = Color(0xFF0284C7),
+                            modifier = Modifier.size(13.dp)
                         )
-                    }
-
-                    // 2. Settings / Test Port WAN (Gear)
-                    IconButton(
-                        onClick = onWanPortClick,
-                        modifier = Modifier
-                            .size(24.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF0D9488))
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Settings,
-                            contentDescription = "Test Port WAN / Cài đặt",
-                            tint = Color.White,
-                            modifier = Modifier.size(12.dp)
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = "Đổi IP",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF0284C7),
+                            maxLines = 1
                         )
                     }
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
-                    // 3. Info / Details & Diagnostics (Info icon)
-                    Box {
-                        IconButton(
-                            onClick = { showMenu = true },
-                            modifier = Modifier
-                                .size(24.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFF475569))
+                // Button 2: Mở Web GUI
+                Surface(
+                    onClick = {
+                        val url = "http://${device.ipv4Address}:${device.httpPort}"
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                        runCatching { context.startActivity(intent) }
+                            .onFailure { Toast.makeText(context, "Không mở được trình duyệt", Toast.LENGTH_SHORT).show() }
+                    },
+                    shape = RoundedCornerShape(6.dp),
+                    color = Color(0xFF2563EB).copy(alpha = 0.12f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2563EB).copy(alpha = 0.45f)),
+                    modifier = Modifier.weight(1f).height(31.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Language,
+                            contentDescription = null,
+                            tint = Color(0xFF2563EB),
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = "Mở Web",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF2563EB),
+                            maxLines = 1
+                        )
+                    }
+                }
+
+                // Button 3: Test Port WAN
+                Surface(
+                    onClick = onWanPortClick,
+                    shape = RoundedCornerShape(6.dp),
+                    color = Color(0xFF0D9488).copy(alpha = 0.12f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF0D9488).copy(alpha = 0.45f)),
+                    modifier = Modifier.weight(1f).height(31.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = null,
+                            tint = Color(0xFF0D9488),
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = "Test Port",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF0D9488),
+                            maxLines = 1
+                        )
+                    }
+                }
+
+                // Button 4: Tiện ích / Thêm...
+                Box(modifier = Modifier.weight(1f)) {
+                    Surface(
+                        onClick = { showMenu = true },
+                        shape = RoundedCornerShape(6.dp),
+                        color = Color(0xFF475569).copy(alpha = 0.12f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF475569).copy(alpha = 0.45f)),
+                        modifier = Modifier.fillMaxWidth().height(31.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxSize().padding(horizontal = 2.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Info,
-                                contentDescription = "Menu chức năng",
-                                tint = Color.White,
-                                modifier = Modifier.size(12.dp)
+                                imageVector = Icons.Default.MoreHoriz,
+                                contentDescription = null,
+                                tint = Color(0xFF475569),
+                                modifier = Modifier.size(14.dp)
                             )
-                        }
-
-                        DropdownMenu(
-                            expanded = showMenu,
-                            onDismissRequest = { showMenu = false }
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Đường dẫn luồng RTSP", fontSize = 13.sp) },
-                                onClick = {
-                                    showMenu = false
-                                    onRtspClick()
-                                },
-                                leadingIcon = {
-                                    Icon(Icons.Default.Videocam, contentDescription = null, modifier = Modifier.size(16.dp))
-                                }
-                            )
-
-                            DropdownMenuItem(
-                                text = { Text("Kiểm tra Ping & Port nội bộ", fontSize = 13.sp) },
-                                onClick = {
-                                    showMenu = false
-                                    onDiagnosticClick()
-                                },
-                                leadingIcon = {
-                                    Icon(Icons.Default.NetworkCheck, contentDescription = null, modifier = Modifier.size(16.dp))
-                                }
-                            )
-
-                            if (!device.isActivated) {
-                                DropdownMenuItem(
-                                    text = { Text("Kích hoạt thiết bị", fontSize = 13.sp) },
-                                    onClick = {
-                                        showMenu = false
-                                        onActivateClick()
-                                    },
-                                    leadingIcon = {
-                                        Icon(Icons.Default.LockOpen, contentDescription = null, modifier = Modifier.size(16.dp))
-                                    }
-                                )
-                            }
-
-                            DropdownMenuItem(
-                                text = { Text("Khởi động lại (Reboot)", fontSize = 13.sp) },
-                                onClick = {
-                                    showMenu = false
-                                    onRebootClick()
-                                },
-                                leadingIcon = {
-                                    Icon(Icons.Default.RestartAlt, contentDescription = null, modifier = Modifier.size(16.dp))
-                                }
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Text(
+                                text = "Thêm ▾",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF475569),
+                                maxLines = 1
                             )
                         }
                     }
 
-                    // 4. Web GUI (Globe icon)
-                    IconButton(
-                        onClick = {
-                            val url = "http://${device.ipv4Address}:${device.httpPort}"
-                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                            context.startActivity(intent)
-                        },
-                        modifier = Modifier
-                            .size(24.dp)
-                            .clip(CircleShape)
-                            .background(Color(0xFF2563EB))
+                    // Dropdown menu for RTSP, Ping diagnostic, Activate, Reboot
+                    DropdownMenu(
+                        expanded = showMenu,
+                        onDismissRequest = { showMenu = false }
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Language,
-                            contentDescription = "Mở Web",
-                            tint = Color.White,
-                            modifier = Modifier.size(12.dp)
+                        DropdownMenuItem(
+                            text = { Text("Xem luồng RTSP", fontSize = 13.sp) },
+                            onClick = {
+                                showMenu = false
+                                onRtspClick()
+                            },
+                            leadingIcon = {
+                                Icon(Icons.Default.Videocam, contentDescription = null, modifier = Modifier.size(16.dp))
+                            }
+                        )
+
+                        DropdownMenuItem(
+                            text = { Text("Kiểm tra Ping & Port nội bộ", fontSize = 13.sp) },
+                            onClick = {
+                                showMenu = false
+                                onDiagnosticClick()
+                            },
+                            leadingIcon = {
+                                Icon(Icons.Default.NetworkCheck, contentDescription = null, modifier = Modifier.size(16.dp))
+                            }
+                        )
+
+                        if (!device.isActivated) {
+                            DropdownMenuItem(
+                                text = { Text("Kích hoạt thiết bị", fontSize = 13.sp) },
+                                onClick = {
+                                    showMenu = false
+                                    onActivateClick()
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.LockOpen, contentDescription = null, modifier = Modifier.size(16.dp))
+                                }
+                            )
+                        }
+
+                        DropdownMenuItem(
+                            text = { Text("Khởi động lại (Reboot)", fontSize = 13.sp) },
+                            onClick = {
+                                showMenu = false
+                                onRebootClick()
+                            },
+                            leadingIcon = {
+                                Icon(Icons.Default.RestartAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                            }
                         )
                     }
                 }
