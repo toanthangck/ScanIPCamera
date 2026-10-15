@@ -7,6 +7,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -316,9 +317,11 @@ fun CameraSettingsDialog(
 
                         // Quick Password Chips Row
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(5.dp)
                         ) {
                             Text("Mẫu:", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             listOf("Admin@123456", "admin12345", "admin123", "123456", "admin").forEach { samplePass ->
@@ -561,20 +564,22 @@ fun CameraSettingsDialog(
                                     }
                                 }
 
-                                // Overlay: Bottom IP Bar
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .align(Alignment.BottomCenter)
-                                        .background(Color(0x99000000))
-                                        .padding(horizontal = 10.dp, vertical = 3.dp)
-                                ) {
-                                    Text(
-                                        text = "IP: ${device.ipv4Address} • Kênh $selectedChannel • WDR: $selectedWdrMode • Màu: $dayNightMode • Sáng: ${brightness.toInt()}",
-                                        fontSize = 10.sp,
-                                        fontFamily = FontFamily.Monospace,
-                                        color = Color(0xFFE2E8F0)
-                                    )
+                                // Overlay: Bottom IP Bar (Only visible when image is loaded)
+                                if (snapshotBitmap != null) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .align(Alignment.BottomCenter)
+                                            .background(Color(0x99000000))
+                                            .padding(horizontal = 10.dp, vertical = 3.dp)
+                                    ) {
+                                        Text(
+                                            text = "IP: ${device.ipv4Address} • Kênh $selectedChannel • WDR: $selectedWdrMode • Màu: $dayNightMode • Sáng: ${brightness.toInt()}",
+                                            fontSize = 10.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            color = Color(0xFFE2E8F0)
+                                        )
+                                    }
                                 }
                             }
                         }

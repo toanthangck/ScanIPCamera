@@ -9,9 +9,12 @@ import com.scanipcamera.app.data.model.DeviceBrand
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
+import java.io.ByteArrayOutputStream
 import java.io.InputStreamReader
 import java.io.OutputStream
 import java.net.HttpURLConnection
+import java.net.InetSocketAddress
+import java.net.Socket
 import java.net.URL
 import java.security.MessageDigest
 import java.text.SimpleDateFormat
@@ -227,6 +230,84 @@ class CameraConfigService {
     }
 
     /**
+     * Read full HTTP or raw binary response from a raw TCP socket.
+     * Automatically handles missing HTTP status lines (HTTP 0.9 or direct JPEG streams like Dahua JFIF)
+     * and stops reading as soon as the complete JPEG frame (EOI: 0xFF, 0xD9) or Content-Length is reached.
+     */
+    private fun readSocketResponse(inputStream: java.io.InputStream): ByteArray {
+        val buffer = ByteArrayOutputStream()
+        val temp = ByteArray(8192)
+        var contentLength = -1
+        var headerEnded = false
+        var headerEndIndex = -1
+
+        try {
+            while (true) {
+                val bytesRead = inputStream.read(temp)
+                if (bytesRead == -1) break
+                buffer.write(temp, 0, bytesRead)
+                val currentBytes = buffer.toByteArray()
+
+                if (!headerEnded) {
+                    // Check if stream is raw JPEG without any HTTP headers (starts with SOI 0xFF, 0xD8)
+                    if (currentBytes.size >= 2 && (currentBytes[0].toInt() and 0xFF) == 0xFF && (currentBytes[1].toInt() and 0xFF) == 0xD8) {
+                        headerEnded = true
+                    } else {
+                        // Look for \r\n\r\n
+                        val idx = findSubArray(currentBytes, byteArrayOf(13, 10, 13, 10))
+                        if (idx != -1) {
+                            headerEnded = true
+                            headerEndIndex = idx + 4
+                            val headerText = String(currentBytes, 0, idx, Charsets.ISO_8859_1)
+                            for (line in headerText.lineSequence()) {
+                                if (line.startsWith("Content-Length:", ignoreCase = true)) {
+                                    contentLength = line.substringAfter(":").trim().toIntOrNull() ?: -1
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (headerEnded) {
+                    // 1. If content-length was specified and we have received it all
+                    if (contentLength > 0 && headerEndIndex > 0) {
+                        if (currentBytes.size >= headerEndIndex + contentLength) {
+                            return currentBytes
+                        }
+                    }
+                    // 2. If this is a JPEG payload and we hit EOI (0xFF, 0xD9)
+                    if (currentBytes.size > 200) {
+                        val lastCheckStart = maxOf(0, currentBytes.size - 512)
+                        for (i in (currentBytes.size - 2) downTo lastCheckStart) {
+                            if ((currentBytes[i].toInt() and 0xFF) == 0xFF && (currentBytes[i + 1].toInt() and 0xFF) == 0xD9) {
+                                return currentBytes.copyOfRange(0, i + 2)
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (ignored: Exception) {
+            // Socket timeout or closed, return accumulated bytes
+        }
+        return buffer.toByteArray()
+    }
+
+    private fun findSubArray(source: ByteArray, target: ByteArray): Int {
+        if (target.isEmpty() || source.size < target.size) return -1
+        for (i in 0..source.size - target.size) {
+            var match = true
+            for (j in target.indices) {
+                if (source[i + j] != target[j]) {
+                    match = false
+                    break
+                }
+            }
+            if (match) return i
+        }
+        return -1
+    }
+
+    /**
      * Extract JPEG frame from raw byte stream (handles multipart MJPEG or padded headers)
      */
     private fun extractJpegBytes(data: ByteArray): ByteArray {
@@ -249,7 +330,8 @@ class CameraConfigService {
     }
 
     /**
-     * Fetch raw image bytes from camera with Basic/Digest authentication
+     * Fetch raw image bytes from camera with Basic/Digest authentication using direct Socket.
+     * Completely avoids OkHttp/HttpURLConnection ProtocolException when camera streams raw JPEG (JFIF).
      */
     private fun fetchImageBytes(
         urlString: String,
@@ -258,110 +340,81 @@ class CameraConfigService {
     ): Result<ByteArray> {
         return try {
             val url = URL(urlString)
+            val host = url.host
+            val port = if (url.port > 0) url.port else 80
             val uriPath = if (url.query != null) "${url.path}?${url.query}" else url.path.ifEmpty { "/" }
 
-            // 1. Initial request without credentials to receive server challenge
-            var conn = (url.openConnection() as HttpURLConnection).apply {
-                requestMethod = "GET"
-                connectTimeout = 3500
-                readTimeout = 4500
-                instanceFollowRedirects = true
-                setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36")
-                setRequestProperty("Accept", "image/jpeg,image/webp,image/*,*/*;q=0.8")
-                setRequestProperty("Connection", "close")
+            // 1. Probe Socket connection without credentials
+            val socket1 = Socket()
+            socket1.connect(InetSocketAddress(host, port), 3500)
+            socket1.soTimeout = 4000
+            val req1 = "GET $uriPath HTTP/1.1\r\n" +
+                    "Host: $host:$port\r\n" +
+                    "User-Agent: Mozilla/5.0 (Linux; Android 14)\r\n" +
+                    "Accept: image/jpeg,image/*,*/*\r\n" +
+                    "Connection: close\r\n\r\n"
+            socket1.getOutputStream().apply {
+                write(req1.toByteArray(Charsets.UTF_8))
+                flush()
+            }
+            val res1Bytes = readSocketResponse(socket1.getInputStream())
+            try { socket1.close() } catch (ignored: Exception) {}
+
+            // If 200 OK or directly JPEG without auth
+            val cleanJpeg1 = extractJpegBytes(res1Bytes)
+            if (cleanJpeg1.size > 200 && (cleanJpeg1[0].toInt() and 0xFF) == 0xFF && (cleanJpeg1[1].toInt() and 0xFF) == 0xD8) {
+                return Result.success(cleanJpeg1)
             }
 
-            var responseCode = try {
-                conn.responseCode
-            } catch (e: Exception) {
-                conn.disconnect()
-                return Result.failure(Exception("Lỗi kết nối tới ${url.host}:${url.port}: ${e.message}"))
-            }
-
-            // If 200 OK without auth
-            if (responseCode in 200..299) {
-                val bytes = conn.inputStream.use { it.readBytes() }
-                conn.disconnect()
-                return if (bytes.isNotEmpty()) Result.success(bytes) else Result.failure(Exception("Ảnh trả về rỗng (0 bytes)"))
-            }
-
-            // 2. Handle 401 Unauthorized Challenge
-            if (responseCode == 401) {
+            // Check if 401 Unauthorized Challenge
+            val headerText1 = String(res1Bytes, 0, minOf(res1Bytes.size, 2048), Charsets.ISO_8859_1)
+            if (headerText1.contains("401")) {
                 if (user.isBlank() && pass.isBlank()) {
-                    conn.disconnect()
                     return Result.failure(Exception("Thiết bị yêu cầu mật khẩu (HTTP 401)"))
                 }
 
-                val authHeader = conn.headerFields.entries
-                    .firstOrNull { it.key?.equals("WWW-Authenticate", ignoreCase = true) == true }
-                    ?.value?.joinToString(", ") ?: conn.getHeaderField("WWW-Authenticate") ?: ""
+                val authHeader = headerText1.lineSequence()
+                    .firstOrNull { it.startsWith("WWW-Authenticate:", ignoreCase = true) }
+                    ?.substringAfter(":")?.trim() ?: ""
 
-                try { conn.errorStream?.readBytes(); conn.errorStream?.close() } catch (ignored: Exception) {}
-                conn.disconnect()
-
-                if (authHeader.contains("Digest", ignoreCase = true)) {
+                val authLine = if (authHeader.contains("Digest", ignoreCase = true)) {
                     val digestHeader = computeDigestHeader("GET", uriPath, authHeader, user, pass)
-                    conn = (url.openConnection() as HttpURLConnection).apply {
-                        requestMethod = "GET"
-                        connectTimeout = 4000
-                        readTimeout = 5000
-                        instanceFollowRedirects = true
-                        setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36")
-                        setRequestProperty("Accept", "image/jpeg,image/webp,image/*,*/*;q=0.8")
-                        setRequestProperty("Authorization", digestHeader)
-                        setRequestProperty("Connection", "close")
-                    }
-                    responseCode = try {
-                        conn.responseCode
-                    } catch (e: Exception) {
-                        conn.disconnect()
-                        return Result.failure(Exception("Lỗi gửi Digest Auth: ${e.message}"))
-                    }
-
-                    if (responseCode in 200..299) {
-                        val bytes = conn.inputStream.use { it.readBytes() }
-                        conn.disconnect()
-                        return if (bytes.isNotEmpty()) Result.success(bytes) else Result.failure(Exception("Ảnh trả về rỗng (0 bytes)"))
-                    } else if (responseCode == 401) {
-                        try { conn.errorStream?.readBytes(); conn.errorStream?.close() } catch (ignored: Exception) {}
-                        conn.disconnect()
-                        return Result.failure(Exception("Sai mật khẩu hoặc tài khoản thiết bị (HTTP 401)"))
-                    }
+                    "Authorization: $digestHeader\r\n"
                 } else {
-                    // Try Basic Auth
                     val basicAuth = Base64.encodeToString("$user:$pass".toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
-                    conn = (url.openConnection() as HttpURLConnection).apply {
-                        requestMethod = "GET"
-                        connectTimeout = 3500
-                        readTimeout = 4500
-                        instanceFollowRedirects = true
-                        setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Mobile Safari/537.36")
-                        setRequestProperty("Accept", "image/jpeg,image/webp,image/*,*/*;q=0.8")
-                        setRequestProperty("Authorization", "Basic $basicAuth")
-                        setRequestProperty("Connection", "close")
-                    }
-                    responseCode = try {
-                        conn.responseCode
-                    } catch (e: Exception) {
-                        conn.disconnect()
-                        return Result.failure(Exception("Lỗi gửi Basic Auth: ${e.message}"))
-                    }
-
-                    if (responseCode in 200..299) {
-                        val bytes = conn.inputStream.use { it.readBytes() }
-                        conn.disconnect()
-                        return if (bytes.isNotEmpty()) Result.success(bytes) else Result.failure(Exception("Ảnh trả về rỗng (0 bytes)"))
-                    } else if (responseCode == 401) {
-                        try { conn.errorStream?.readBytes(); conn.errorStream?.close() } catch (ignored: Exception) {}
-                        conn.disconnect()
-                        return Result.failure(Exception("Sai mật khẩu hoặc tài khoản thiết bị (HTTP 401)"))
-                    }
+                    "Authorization: Basic $basicAuth\r\n"
                 }
+
+                // 2. Authenticated Socket request
+                val socket2 = Socket()
+                socket2.connect(InetSocketAddress(host, port), 4000)
+                socket2.soTimeout = 5000
+                val req2 = "GET $uriPath HTTP/1.1\r\n" +
+                        "Host: $host:$port\r\n" +
+                        "User-Agent: Mozilla/5.0 (Linux; Android 14)\r\n" +
+                        "Accept: image/jpeg,image/*,*/*\r\n" +
+                        authLine +
+                        "Connection: close\r\n\r\n"
+                socket2.getOutputStream().apply {
+                    write(req2.toByteArray(Charsets.UTF_8))
+                    flush()
+                }
+                val res2Bytes = readSocketResponse(socket2.getInputStream())
+                try { socket2.close() } catch (ignored: Exception) {}
+
+                val cleanJpeg2 = extractJpegBytes(res2Bytes)
+                if (cleanJpeg2.size > 200 && (cleanJpeg2[0].toInt() and 0xFF) == 0xFF && (cleanJpeg2[1].toInt() and 0xFF) == 0xD8) {
+                    return Result.success(cleanJpeg2)
+                }
+
+                val headerText2 = String(res2Bytes, 0, minOf(res2Bytes.size, 512), Charsets.ISO_8859_1)
+                if (headerText2.contains("401")) {
+                    return Result.failure(Exception("Sai mật khẩu hoặc tài khoản thiết bị (HTTP 401)"))
+                }
+                return Result.failure(Exception("Không nhận được dữ liệu ảnh JPEG từ camera"))
             }
 
-            try { conn.errorStream?.readBytes(); conn.errorStream?.close() } catch (ignored: Exception) {}
-            conn.disconnect()
-            Result.failure(Exception("Mã lỗi HTTP $responseCode"))
+            Result.failure(Exception("Phản hồi không hợp lệ từ camera"))
         } catch (e: Exception) {
             Result.failure(e)
         }
