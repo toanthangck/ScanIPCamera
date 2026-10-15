@@ -49,6 +49,7 @@ fun ScannerScreen(
     val userMessage by viewModel.userMessage.collectAsState()
 
     var showWanDialogDirect by remember { mutableStateOf(false) }
+    var showNetworkCard by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -79,6 +80,16 @@ fun ScannerScreen(
                     }
                 },
                 actions = {
+                    // Toggle Network (Wi-Fi + WAN) Banner
+                    IconButton(
+                        onClick = { showNetworkCard = !showNetworkCard }
+                    ) {
+                        Icon(
+                            imageVector = if (showNetworkCard) Icons.Default.WifiTethering else Icons.Default.Wifi,
+                            contentDescription = "Bật/Tắt thông tin Wi-Fi & WAN",
+                            tint = if (showNetworkCard) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                     // Export / Share Report button
                     IconButton(
                         onClick = { viewModel.exportDeviceReport() },
@@ -158,129 +169,191 @@ fun ScannerScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 4.dp),
-                shape = RoundedCornerShape(10.dp),
+                    .padding(horizontal = 14.dp, vertical = 2.dp),
+                shape = RoundedCornerShape(8.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
             ) {
-                Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
-                    Text(
-                        text = "Thông tin kết nối thiết bị",
-                        fontSize = 11.sp,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(bottom = 2.dp)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = defaultUser,
+                        onValueChange = { defaultUser = it },
+                        placeholder = { Text("Tài khoản", fontSize = 11.sp) },
+                        leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f).height(44.dp)
                     )
+                    OutlinedTextField(
+                        value = defaultPassword,
+                        onValueChange = { defaultPassword = it },
+                        placeholder = { Text("Mật khẩu", fontSize = 11.sp) },
+                        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(15.dp)) },
+                        singleLine = true,
+                        modifier = Modifier.weight(1f).height(44.dp)
+                    )
+                }
+            }
+
+            // Compact 1-line Network & WAN Bar with Toggle Button (Saves massive screen space!)
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 3.dp),
+                shape = RoundedCornerShape(8.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+                onClick = { showNetworkCard = !showNetworkCard }
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f, fill = false)
                     ) {
-                        OutlinedTextField(
-                            value = defaultUser,
-                            onValueChange = { defaultUser = it },
-                            placeholder = { Text("Tài khoản", fontSize = 11.sp) },
-                            leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                            singleLine = true,
-                            modifier = Modifier.weight(1f).height(48.dp)
+                        Icon(
+                            imageVector = Icons.Default.Wifi,
+                            contentDescription = null,
+                            tint = if (wifiInfo.isConnected) MaterialTheme.colorScheme.primary else Color.Gray,
+                            modifier = Modifier.size(15.dp)
                         )
-                        OutlinedTextField(
-                            value = defaultPassword,
-                            onValueChange = { defaultPassword = it },
-                            placeholder = { Text("Mật khẩu", fontSize = 11.sp) },
-                            leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                            singleLine = true,
-                            modifier = Modifier.weight(1f).height(48.dp)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = wifiInfo.ssid.ifEmpty { "Wi-Fi" },
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1
                         )
+                        if (wifiInfo.ipAddress.isNotBlank()) {
+                            Text(
+                                text = " (${wifiInfo.ipAddress})",
+                                fontSize = 10.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1
+                            )
+                        }
+                    }
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        FilledTonalButton(
+                            onClick = { showNetworkCard = !showNetworkCard },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            modifier = Modifier.height(28.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (showNetworkCard) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown,
+                                contentDescription = null,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = if (showNetworkCard) "Thu gọn" else "Mạng & WAN",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
 
-            // Enhanced Network Dashboard Banner (LAN + WAN)
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 6.dp),
-                shape = RoundedCornerShape(12.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    // Row 1: LAN Wi-Fi info
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Wifi,
-                                contentDescription = null,
-                                tint = if (wifiInfo.isConnected) MaterialTheme.colorScheme.primary else Color.Gray,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column {
-                                Text(
-                                    text = wifiInfo.ssid,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp
-                                )
-                                Text(
-                                    text = "IP: ${wifiInfo.ipAddress.ifEmpty { "N/A" }} | GW: ${wifiInfo.gateway.ifEmpty { "N/A" }}",
-                                    fontSize = 11.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                        }
-
-                        IconButton(
-                            onClick = { viewModel.refreshWifi() },
-                            modifier = Modifier.size(28.dp)
+            // Expandable Detailed Network Dashboard Banner (LAN + WAN + Test Port)
+            AnimatedVisibility(visible = showNetworkCard) {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 4.dp),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f))
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        // Row 1: LAN Wi-Fi info
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Icon(imageVector = Icons.Default.Sync, contentDescription = "Làm mới", modifier = Modifier.size(16.dp))
-                        }
-                    }
-
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-
-                    // Row 2: WAN Public IP & Port Forwarding Checker Button
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Public,
-                                contentDescription = null,
-                                tint = Color(0xFF00897B),
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Column {
-                                Text(
-                                    text = "WAN IP: ${wanInfo?.ip ?: "Đang lấy..."}",
-                                    fontSize = 12.sp,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Wifi,
+                                    contentDescription = null,
+                                    tint = if (wifiInfo.isConnected) MaterialTheme.colorScheme.primary else Color.Gray,
+                                    modifier = Modifier.size(20.dp)
                                 )
-                                if (!wanInfo?.isp.isNullOrBlank()) {
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
                                     Text(
-                                        text = "${wanInfo?.isp} (${wanInfo?.country})",
-                                        fontSize = 10.sp,
+                                        text = wifiInfo.ssid,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
+                                    )
+                                    Text(
+                                        text = "IP: ${wifiInfo.ipAddress.ifEmpty { "N/A" }} | GW: ${wifiInfo.gateway.ifEmpty { "N/A" }}",
+                                        fontSize = 11.sp,
+                                        fontFamily = FontFamily.Monospace,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
+
+                            IconButton(
+                                onClick = { viewModel.refreshWifi() },
+                                modifier = Modifier.size(28.dp)
+                            ) {
+                                Icon(imageVector = Icons.Default.Sync, contentDescription = "Làm mới", modifier = Modifier.size(16.dp))
+                            }
                         }
 
-                        FilledTonalButton(
-                            onClick = { showWanDialogDirect = true },
-                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
-                            modifier = Modifier.height(30.dp)
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                        // Row 2: WAN Public IP & Port Forwarding Checker Button
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Icon(imageVector = Icons.Default.NetworkCheck, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(text = "Test Port WAN", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Public,
+                                    contentDescription = null,
+                                    tint = Color(0xFF00897B),
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Column {
+                                    Text(
+                                        text = "WAN IP: ${wanInfo?.ip ?: "Đang lấy..."}",
+                                        fontSize = 12.sp,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    if (!wanInfo?.isp.isNullOrBlank()) {
+                                        Text(
+                                            text = "${wanInfo?.isp} (${wanInfo?.country})",
+                                            fontSize = 10.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+
+                            FilledTonalButton(
+                                onClick = { showWanDialogDirect = true },
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.height(30.dp)
+                            ) {
+                                Icon(imageVector = Icons.Default.NetworkCheck, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(text = "Test Port WAN", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
