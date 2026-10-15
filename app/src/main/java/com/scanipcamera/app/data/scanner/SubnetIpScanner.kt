@@ -3,6 +3,7 @@ package com.scanipcamera.app.data.scanner
 import android.util.Log
 import com.scanipcamera.app.data.model.CameraDevice
 import com.scanipcamera.app.data.model.DeviceBrand
+import com.scanipcamera.app.data.model.DeviceCategory
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
@@ -43,10 +44,13 @@ class SubnetIpScanner {
                         if (openPorts.isNotEmpty()) {
                             val mac = getMacFromArp(targetIp)
                             val brand = inferBrandFromPorts(openPorts)
+                            val modelName = "${brand.displayName} (Port ${openPorts.first()})"
+                            val category = if (openPorts.contains(37777) || openPorts.contains(8000)) DeviceCategory.NVR else DeviceCategory.CAMERA
                             val device = CameraDevice(
                                 id = if (mac.isNotBlank()) mac else targetIp,
                                 brand = brand,
-                                model = "${brand.displayName} (Port ${openPorts.first()})",
+                                category = category,
+                                model = modelName,
                                 macAddress = mac,
                                 ipv4Address = targetIp,
                                 httpPort = if (openPorts.contains(80)) 80 else if (openPorts.contains(8080)) 8080 else 80,

@@ -136,6 +136,7 @@ class OnvifWsDiscoveryScanner {
             }
 
             val brand = DeviceBrand.fromModelOrVendor(modelName + " " + scopesStr)
+            val (category, channels) = CameraDevice.detectCategoryAndChannels(modelName, scopesStr)
 
             // Extract MAC address from scopes or UUID if present
             var mac = ""
@@ -148,6 +149,8 @@ class OnvifWsDiscoveryScanner {
             return CameraDevice(
                 id = if (mac.isNotBlank()) mac else "$ip:$port",
                 brand = brand,
+                category = category,
+                channelCount = channels,
                 model = modelName,
                 macAddress = mac,
                 ipv4Address = ip,

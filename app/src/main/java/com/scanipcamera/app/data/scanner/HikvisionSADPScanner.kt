@@ -150,10 +150,13 @@ class HikvisionSADPScanner {
             }
 
             val brand = DeviceBrand.fromModelOrVendor(modelName + " " + deviceSn)
+            val (category, channels) = CameraDevice.detectCategoryAndChannels(modelName, deviceDescription)
 
             return CameraDevice(
                 id = if (mac.isNotBlank()) mac else UUID.randomUUID().toString(),
                 brand = brand,
+                category = category,
+                channelCount = channels,
                 model = modelName,
                 serialNumber = deviceSn,
                 macAddress = mac,

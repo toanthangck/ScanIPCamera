@@ -8,7 +8,10 @@ import com.scanipcamera.app.data.config.HikvisionConfigurator
 import com.scanipcamera.app.data.export.DeviceExportHelper
 import com.scanipcamera.app.data.model.CameraDevice
 import com.scanipcamera.app.data.model.DeviceBrand
+import com.scanipcamera.app.data.model.DeviceCategory
 import com.scanipcamera.app.data.model.NetworkConfigPayload
+import com.scanipcamera.app.data.network.WanInfo
+import com.scanipcamera.app.data.network.WanNetworkUtils
 import com.scanipcamera.app.data.network.WifiNetworkInfo
 import com.scanipcamera.app.data.scanner.DeviceScannerManager
 import com.scanipcamera.app.data.scanner.ScanMode
@@ -39,8 +42,14 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
         WifiNetworkInfo()
     )
 
+    private val _wanInfo = MutableStateFlow<WanInfo?>(null)
+    val wanInfo: StateFlow<WanInfo?> = _wanInfo.asStateFlow()
+
     private val _selectedBrandFilter = MutableStateFlow<DeviceBrand?>(null)
     val selectedBrandFilter: StateFlow<DeviceBrand?> = _selectedBrandFilter
+
+    private val _selectedCategoryFilter = MutableStateFlow<DeviceCategory?>(null)
+    val selectedCategoryFilter: StateFlow<DeviceCategory?> = _selectedCategoryFilter
 
     private val _searchQuery = MutableStateFlow("")
     val searchQuery: StateFlow<String> = _searchQuery
@@ -48,15 +57,17 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
     private val _scanMode = MutableStateFlow(ScanMode.UDP_DISCOVERY)
     val scanMode: StateFlow<ScanMode> = _scanMode
 
-    // Filter devices based on brand and search query
+    // Filter devices based on brand, category, and search query
     val devices: StateFlow<List<CameraDevice>> = combine(
         scannerManager.devices,
         _selectedBrandFilter,
+        _selectedCategoryFilter,
         _searchQuery
-    ) { deviceList, brandFilter, query ->
+    ) { deviceList, brandFilter, catFilter, query ->
         val trimmed = query.trim().lowercase()
         deviceList.filter { device ->
             val matchBrand = (brandFilter == null || device.brand == brandFilter)
+            val matchCategory = (catFilter == null || device.category == catFilter)
             val matchQuery = if (trimmed.isEmpty()) {
                 true
             } else {
@@ -65,7 +76,7 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
                         device.model.lowercase().contains(trimmed) ||
                         device.serialNumber.lowercase().contains(trimmed)
             }
-            matchBrand && matchQuery
+            matchBrand && matchCategory && matchQuery
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -82,6 +93,9 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
     private val _diagnosticDevice = MutableStateFlow<CameraDevice?>(null)
     val diagnosticDevice: StateFlow<CameraDevice?> = _diagnosticDevice
 
+    private val _wanPortDevice = MutableStateFlow<CameraDevice?>(null)
+    val wanPortDevice: StateFlow<CameraDevice?> = _wanPortDevice
+
     private val _rebootingDevice = MutableStateFlow<CameraDevice?>(null)
     val rebootingDevice: StateFlow<CameraDevice?> = _rebootingDevice
 
@@ -90,10 +104,18 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
 
     init {
         scannerManager.refreshWifiInfo()
+        fetchWanInfo()
+    }
+
+    fun fetchWanInfo() {
+        viewModelScope.launch {
+            _wanInfo.value = WanNetworkUtils.getPublicWanInfo()
+        }
     }
 
     fun startScanning() {
         viewModelScope.launch {
+            fetchWanInfo()
             if (_scanMode.value == ScanMode.UDP_DISCOVERY) {
                 scannerManager.startScan()
             } else {
@@ -114,8 +136,13 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
         _selectedBrandFilter.value = brand
     }
 
+    fun setCategoryFilter(category: DeviceCategory?) {
+        _selectedCategoryFilter.value = category
+    }
+
     fun refreshWifi() {
         scannerManager.refreshWifiInfo()
+        fetchWanInfo()
     }
 
     fun openConfigDialog(device: CameraDevice) {
@@ -148,6 +175,14 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
 
     fun closeDiagnosticDialog() {
         _diagnosticDevice.value = null
+    }
+
+    fun openWanPortDialog(device: CameraDevice? = null) {
+        _wanPortDevice.value = device
+    }
+
+    fun closeWanPortDialog() {
+        _wanPortDevice.value = null
     }
 
     fun openRebootDialog(device: CameraDevice) {

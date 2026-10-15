@@ -1,7 +1,6 @@
 package com.scanipcamera.app.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -20,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.scanipcamera.app.data.model.DeviceBrand
+import com.scanipcamera.app.data.model.DeviceCategory
 import com.scanipcamera.app.data.scanner.ScanMode
 import com.scanipcamera.app.ui.components.*
 import com.scanipcamera.app.ui.viewmodel.ScannerViewModel
@@ -34,16 +34,21 @@ fun ScannerScreen(
     val isScanning by viewModel.isScanning.collectAsState()
     val scanProgress by viewModel.scanProgress.collectAsState()
     val wifiInfo by viewModel.wifiInfo.collectAsState()
+    val wanInfo by viewModel.wanInfo.collectAsState()
     val scanMode by viewModel.scanMode.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
     val selectedBrandFilter by viewModel.selectedBrandFilter.collectAsState()
+    val selectedCategoryFilter by viewModel.selectedCategoryFilter.collectAsState()
 
     val editingDevice by viewModel.editingDevice.collectAsState()
     val activatingDevice by viewModel.activatingDevice.collectAsState()
     val rtspDevice by viewModel.rtspDevice.collectAsState()
     val diagnosticDevice by viewModel.diagnosticDevice.collectAsState()
+    val wanPortDevice by viewModel.wanPortDevice.collectAsState()
     val rebootingDevice by viewModel.rebootingDevice.collectAsState()
     val userMessage by viewModel.userMessage.collectAsState()
+
+    var showWanDialogDirect by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -62,12 +67,12 @@ fun ScannerScreen(
                 title = {
                     Column {
                         Text(
-                            text = "Scan IP Camera",
+                            text = "Scan IP Camera & NVR",
                             fontWeight = FontWeight.Bold,
                             fontSize = 18.sp
                         )
                         Text(
-                            text = "SADP & Dahua ConfigTool Mobile",
+                            text = "SADP, Dahua & Port Forwarding Tool",
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -137,53 +142,95 @@ fun ScannerScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // Wi-Fi Status Banner
+            // Enhanced Network Dashboard Banner (LAN + WAN)
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 14.dp, vertical = 6.dp),
-                shape = RoundedCornerShape(10.dp),
+                shape = RoundedCornerShape(12.dp),
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.Wifi,
-                            contentDescription = null,
-                            tint = if (wifiInfo.isConnected) MaterialTheme.colorScheme.primary else Color.Gray,
-                            modifier = Modifier.size(20.dp)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Column {
-                            Text(
-                                text = wifiInfo.ssid,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.sp
+                Column(modifier = Modifier.padding(12.dp)) {
+                    // Row 1: LAN Wi-Fi info
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Wifi,
+                                contentDescription = null,
+                                tint = if (wifiInfo.isConnected) MaterialTheme.colorScheme.primary else Color.Gray,
+                                modifier = Modifier.size(20.dp)
                             )
-                            Text(
-                                text = "IP đt: ${wifiInfo.ipAddress.ifEmpty { "Chưa có IP" }} | GW: ${wifiInfo.gateway.ifEmpty { "N/A" }}",
-                                fontSize = 11.sp,
-                                fontFamily = FontFamily.Monospace,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = wifiInfo.ssid,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.sp
+                                )
+                                Text(
+                                    text = "IP: ${wifiInfo.ipAddress.ifEmpty { "N/A" }} | GW: ${wifiInfo.gateway.ifEmpty { "N/A" }}",
+                                    fontSize = 11.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        IconButton(
+                            onClick = { viewModel.refreshWifi() },
+                            modifier = Modifier.size(28.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.Sync, contentDescription = "Làm mới", modifier = Modifier.size(16.dp))
                         }
                     }
 
-                    IconButton(
-                        onClick = { viewModel.refreshWifi() },
-                        modifier = Modifier.size(28.dp)
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                    // Row 2: WAN Public IP & Port Forwarding Checker Button
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Sync,
-                            contentDescription = "Làm mới Wi-Fi",
-                            modifier = Modifier.size(16.dp)
-                        )
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Public,
+                                contentDescription = null,
+                                tint = Color(0xFF00897B),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Text(
+                                    text = "WAN IP: ${wanInfo?.ip ?: "Đang lấy..."}",
+                                    fontSize = 12.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                if (!wanInfo?.isp.isNullOrBlank()) {
+                                    Text(
+                                        text = "${wanInfo?.isp} (${wanInfo?.country})",
+                                        fontSize = 10.sp,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
+
+                        FilledTonalButton(
+                            onClick = { showWanDialogDirect = true },
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            modifier = Modifier.height(30.dp)
+                        ) {
+                            Icon(imageVector = Icons.Default.NetworkCheck, contentDescription = null, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(text = "Test Port WAN", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
@@ -192,24 +239,24 @@ fun ScannerScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 4.dp),
+                    .padding(horizontal = 14.dp, vertical = 2.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 FilterChip(
                     selected = scanMode == ScanMode.UDP_DISCOVERY,
                     onClick = { viewModel.setScanMode(ScanMode.UDP_DISCOVERY) },
-                    label = { Text("Đa giao thức (SADP/Dahua/ONVIF)", fontSize = 12.sp) },
+                    label = { Text("Đa giao thức (SADP/Dahua/ONVIF)", fontSize = 11.sp) },
                     leadingIcon = {
-                        Icon(Icons.Default.Sensors, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Sensors, contentDescription = null, modifier = Modifier.size(14.dp))
                     }
                 )
 
                 FilterChip(
                     selected = scanMode == ScanMode.SUBNET_PING,
                     onClick = { viewModel.setScanMode(ScanMode.SUBNET_PING) },
-                    label = { Text("Quét dải IP (1..254)", fontSize = 12.sp) },
+                    label = { Text("Quét dải IP (1..254)", fontSize = 11.sp) },
                     leadingIcon = {
-                        Icon(Icons.Default.Lan, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Icon(Icons.Default.Lan, contentDescription = null, modifier = Modifier.size(14.dp))
                     }
                 )
             }
@@ -218,7 +265,7 @@ fun ScannerScreen(
             AnimatedVisibility(visible = isScanning) {
                 if (scanMode == ScanMode.SUBNET_PING && scanProgress != null) {
                     val progressFloat = scanProgress!!.first.toFloat() / scanProgress!!.second.toFloat()
-                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 4.dp)) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 2.dp)) {
                         LinearProgressIndicator(
                             progress = { progressFloat },
                             modifier = Modifier.fillMaxWidth()
@@ -238,7 +285,7 @@ fun ScannerScreen(
             OutlinedTextField(
                 value = searchQuery,
                 onValueChange = { viewModel.setSearchQuery(it) },
-                placeholder = { Text("Tìm theo IP, MAC, Model, Serial...", fontSize = 13.sp) },
+                placeholder = { Text("Tìm theo IP, MAC, Model, Đầu ghi NVR...", fontSize = 13.sp) },
                 leadingIcon = {
                     Icon(imageVector = Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
                 },
@@ -256,18 +303,54 @@ fun ScannerScreen(
                 shape = RoundedCornerShape(10.dp)
             )
 
+            // Category Filter Chips (Camera vs NVR vs DVR)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 14.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                FilterChip(
+                    selected = selectedCategoryFilter == null,
+                    onClick = { viewModel.setCategoryFilter(null) },
+                    label = { Text("Tất cả loại (${devices.size})", fontSize = 11.sp) }
+                )
+                FilterChip(
+                    selected = selectedCategoryFilter == DeviceCategory.CAMERA,
+                    onClick = {
+                        viewModel.setCategoryFilter(if (selectedCategoryFilter == DeviceCategory.CAMERA) null else DeviceCategory.CAMERA)
+                    },
+                    label = { Text("📹 Camera IP", fontSize = 11.sp) }
+                )
+                FilterChip(
+                    selected = selectedCategoryFilter == DeviceCategory.NVR,
+                    onClick = {
+                        viewModel.setCategoryFilter(if (selectedCategoryFilter == DeviceCategory.NVR) null else DeviceCategory.NVR)
+                    },
+                    label = { Text("🖥️ Đầu ghi NVR", fontSize = 11.sp) }
+                )
+                FilterChip(
+                    selected = selectedCategoryFilter == DeviceCategory.DVR,
+                    onClick = {
+                        viewModel.setCategoryFilter(if (selectedCategoryFilter == DeviceCategory.DVR) null else DeviceCategory.DVR)
+                    },
+                    label = { Text("📼 Đầu ghi DVR / XVR", fontSize = 11.sp) }
+                )
+            }
+
             // Brand Filter Chips
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 14.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    .padding(horizontal = 14.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 FilterChip(
                     selected = selectedBrandFilter == null,
                     onClick = { viewModel.setBrandFilter(null) },
-                    label = { Text("Tất cả (${devices.size})", fontSize = 12.sp) }
+                    label = { Text("Tất cả hãng", fontSize = 11.sp) }
                 )
 
                 DeviceBrand.entries.forEach { brand ->
@@ -278,7 +361,7 @@ fun ScannerScreen(
                                 if (selectedBrandFilter == brand) null else brand
                             )
                         },
-                        label = { Text(brand.displayName, fontSize = 12.sp) }
+                        label = { Text(brand.displayName, fontSize = 11.sp) }
                     )
                 }
             }
@@ -303,16 +386,16 @@ fun ScannerScreen(
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = if (searchQuery.isNotEmpty()) "Không có kết quả khớp với từ khóa" else "Chưa tìm thấy camera nào",
+                            text = if (searchQuery.isNotEmpty()) "Không tìm thấy thiết bị phù hợp" else "Chưa tìm thấy camera hay đầu ghi nào",
                             fontWeight = FontWeight.Bold,
                             fontSize = 16.sp
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
                             text = if (searchQuery.isNotEmpty()) {
-                                "Thử tìm kiếm với địa chỉ IP hoặc MAC khác."
+                                "Hãy thử tìm với IP hoặc từ khóa khác."
                             } else {
-                                "1. Đảm bảo điện thoại kết nối cùng mạng Wi-Fi với Camera / Đầu ghi.\n2. Nếu switch chặn Multicast, hãy chuyển sang chế độ \"Quét dải IP (1..254)\"."
+                                "1. Hãy đảm bảo điện thoại đang bắt cùng Wi-Fi với Camera / Đầu ghi.\n2. Bấm nút bên dưới để quét dò thiết bị."
                             },
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 13.sp
@@ -340,6 +423,7 @@ fun ScannerScreen(
                             onActivateClick = { viewModel.openActivationDialog(device) },
                             onRtspClick = { viewModel.openRtspDialog(device) },
                             onDiagnosticClick = { viewModel.openDiagnosticDialog(device) },
+                            onWanPortClick = { viewModel.openWanPortDialog(device) },
                             onRebootClick = { viewModel.openRebootDialog(device) }
                         )
                     }
@@ -382,6 +466,21 @@ fun ScannerScreen(
         DiagnosticDialog(
             device = device,
             onDismiss = { viewModel.closeDiagnosticDialog() }
+        )
+    }
+
+    // WAN Port Dialog (triggered from a device or direct button)
+    if (showWanDialogDirect || wanPortDevice != null) {
+        val initialPort = wanPortDevice?.let { dev ->
+            if (dev.sdkPort > 0) dev.sdkPort else dev.httpPort
+        } ?: 80
+        WanPortDialog(
+            wanInfo = wanInfo,
+            initialPort = initialPort,
+            onDismiss = {
+                showWanDialogDirect = false
+                viewModel.closeWanPortDialog()
+            }
         )
     }
 

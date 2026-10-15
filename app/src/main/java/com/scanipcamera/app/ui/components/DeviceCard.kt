@@ -2,6 +2,7 @@ package com.scanipcamera.app.ui.components
 
 import android.content.Intent
 import android.net.Uri
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -10,6 +11,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -17,6 +19,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.scanipcamera.app.data.model.CameraDevice
+import com.scanipcamera.app.data.model.DeviceBrand
+import com.scanipcamera.app.data.model.DeviceCategory
 import com.scanipcamera.app.data.network.NetworkUtils
 import com.scanipcamera.app.ui.theme.StatusActive
 import com.scanipcamera.app.ui.theme.StatusInactive
@@ -31,6 +35,7 @@ fun DeviceCard(
     onActivateClick: () -> Unit,
     onRtspClick: () -> Unit,
     onDiagnosticClick: () -> Unit,
+    onWanPortClick: () -> Unit,
     onRebootClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -41,9 +46,11 @@ fun DeviceCard(
         if (phoneIp.isBlank()) true else NetworkUtils.isSameSubnet(device.ipv4Address, phoneIp, phoneMask)
     }
 
+    val isRecorder = (device.category == DeviceCategory.NVR || device.category == DeviceCategory.DVR)
+
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
@@ -52,7 +59,7 @@ fun DeviceCard(
                 .padding(14.dp)
                 .fillMaxWidth()
         ) {
-            // Header: Brand Badge & Status Badges
+            // Header: Brand Badge & Category & Activation Status
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -62,32 +69,48 @@ fun DeviceCard(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Brand Badge
+                    // Stylized Brand Badge
                     Surface(
                         color = device.brand.badgeColor,
                         shape = RoundedCornerShape(6.dp)
                     ) {
-                        Text(
-                            text = device.brand.displayName,
-                            color = Color.White,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        ) {
+                            Text(
+                                text = device.brand.displayName.uppercase(),
+                                color = Color.White,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                letterSpacing = 0.5.sp
+                            )
+                        }
                     }
 
-                    // Protocol Badge
+                    // Device Category Badge (NVR / DVR / Camera)
                     Surface(
-                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        color = if (isRecorder) Color(0xFF4A148C).copy(alpha = 0.12f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
                         shape = RoundedCornerShape(6.dp)
                     ) {
-                        Text(
-                            text = device.rawProtocol,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isRecorder) Icons.Default.Dns else Icons.Default.Videocam,
+                                contentDescription = null,
+                                tint = if (isRecorder) Color(0xFF7B1FA2) else MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (device.channelCount > 0) "${device.category.displayName} (${device.channelCount} Kênh)" else device.category.displayName,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (isRecorder) Color(0xFF7B1FA2) else MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 }
 
@@ -95,14 +118,14 @@ fun DeviceCard(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Subnet warning badge if mismatched
+                    // Subnet warning badge
                     if (!isSameSubnet && phoneIp.isNotBlank()) {
                         Surface(
                             color = SubnetMismatchColor.copy(alpha = 0.15f),
                             shape = RoundedCornerShape(6.dp)
                         ) {
                             Text(
-                                text = "Khác dải IP ⚠️",
+                                text = "Lệch IP ⚠️",
                                 color = SubnetMismatchColor,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Bold,
@@ -125,17 +148,13 @@ fun DeviceCard(
                         )
                     }
 
-                    // More options menu
+                    // Options Menu
                     Box {
                         IconButton(
                             onClick = { showMenu = true },
                             modifier = Modifier.size(28.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.MoreVert,
-                                contentDescription = "Tùy chọn khác",
-                                modifier = Modifier.size(18.dp)
-                            )
+                            Icon(imageVector = Icons.Default.MoreVert, contentDescription = "Tùy chọn", modifier = Modifier.size(18.dp))
                         }
 
                         DropdownMenu(
@@ -154,7 +173,18 @@ fun DeviceCard(
                             )
 
                             DropdownMenuItem(
-                                text = { Text("Kiểm tra Ping & Port") },
+                                text = { Text("Kiểm tra mở Port WAN (NAT)") },
+                                onClick = {
+                                    showMenu = false
+                                    onWanPortClick()
+                                },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Public, contentDescription = null, modifier = Modifier.size(18.dp))
+                                }
+                            )
+
+                            DropdownMenuItem(
+                                text = { Text("Kiểm tra Ping & Port nội bộ") },
                                 onClick = {
                                     showMenu = false
                                     onDiagnosticClick()
@@ -179,17 +209,25 @@ fun DeviceCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Model Name & Serial
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.Videocam,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(22.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.size(36.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = if (isRecorder) Icons.Default.Storage else Icons.Default.Videocam,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.width(10.dp))
                 Column {
                     Text(
                         text = device.model,
@@ -197,17 +235,28 @@ fun DeviceCard(
                         fontSize = 15.sp,
                         color = MaterialTheme.colorScheme.onSurface
                     )
-                    if (device.serialNumber.isNotBlank()) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (device.serialNumber.isNotBlank()) {
+                            Text(
+                                text = "SN: ${device.serialNumber}",
+                                fontSize = 11.sp,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                         Text(
-                            text = "SN: ${device.serialNumber}",
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            text = "• ${device.rawProtocol}",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
             }
 
-            Divider(modifier = Modifier.padding(vertical = 8.dp), color = MaterialTheme.colorScheme.outlineVariant)
+            HorizontalDivider(
+                modifier = Modifier.padding(vertical = 10.dp),
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+            )
 
             // IP & Network Info Grid
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -250,18 +299,18 @@ fun DeviceCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // Action Buttons
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 // Config IP Button
                 Button(
                     onClick = onConfigureClick,
                     modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
                 ) {
                     Icon(imageVector = Icons.Default.Settings, contentDescription = null, modifier = Modifier.size(15.dp))
                     Spacer(modifier = Modifier.width(4.dp))
@@ -274,7 +323,7 @@ fun DeviceCard(
                         onClick = onActivateClick,
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.filledTonalButtonColors(containerColor = StatusInactive.copy(alpha = 0.2f)),
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 6.dp)
                     ) {
                         Icon(imageVector = Icons.Default.LockOpen, contentDescription = null, modifier = Modifier.size(15.dp))
                         Spacer(modifier = Modifier.width(4.dp))
@@ -290,6 +339,16 @@ fun DeviceCard(
                     Icon(imageVector = Icons.Default.Videocam, contentDescription = null, modifier = Modifier.size(15.dp))
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(text = "RTSP", fontSize = 12.sp)
+                }
+
+                // WAN Port Check Quick Button
+                OutlinedButton(
+                    onClick = onWanPortClick,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 6.dp)
+                ) {
+                    Icon(imageVector = Icons.Default.Public, contentDescription = null, modifier = Modifier.size(15.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(text = "NAT", fontSize = 12.sp)
                 }
 
                 // Open Web Button

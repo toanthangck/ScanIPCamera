@@ -123,10 +123,13 @@ class DahuaDiscoveryScanner {
             val isDhcp = deviceObj.optBoolean("DHCP", false)
 
             val brand = DeviceBrand.fromModelOrVendor(machineName + " " + serialNo)
+            val (category, channels) = CameraDevice.detectCategoryAndChannels(machineName, serialNo)
 
             return CameraDevice(
                 id = if (mac.isNotBlank()) mac else UUID.randomUUID().toString(),
                 brand = if (brand == DeviceBrand.ONVIF) DeviceBrand.DAHUA else brand,
+                category = category,
+                channelCount = channels,
                 model = machineName,
                 serialNumber = serialNo,
                 macAddress = mac,
