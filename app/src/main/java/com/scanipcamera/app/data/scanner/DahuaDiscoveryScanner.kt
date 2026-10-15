@@ -7,18 +7,70 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.BufferedReader
-import java.io.FileReader
 import java.net.*
-import java.util.UUID
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 
-class DahuaDiscoveryScanner {
+class DahuaDiscoveryScanner(private val networkInterface: NetworkInterface? = null) {
 
     companion object {
         private const val TAG = "DahuaDiscoveryScanner"
         const val DAHUA_PORT = 37810
         const val DAHUA_MULTICAST_GROUP = "239.255.255.251"
         private const val BUFFER_SIZE = 8192
+
+        /**
+         * Construct the proprietary 32-byte binary DHIP header prepended to JSON queries.
+         */
+        fun buildDhipPacket(jsonString: String): ByteArray {
+            val jsonBytes = jsonString.toByteArray(Charsets.UTF_8)
+            val jsonLen = jsonBytes.size
+            val header = ByteBuffer.allocate(32).apply {
+                order(ByteOrder.LITTLE_ENDIAN)
+                putInt(0x20) // Header length: 32 bytes (0x20)
+                order(ByteOrder.BIG_ENDIAN)
+                put("DHIP".toByteArray(Charsets.US_ASCII)) // Protocol Magic
+                order(ByteOrder.LITTLE_ENDIAN)
+                putLong(0L) // Session ID (4 bytes) + Request ID (4 bytes)
+                putInt(jsonLen) // Total length
+                putInt(0) // Fragment index
+                putInt(jsonLen) // Message length
+                putInt(0) // Data length
+            }.array()
+
+            val packet = ByteArray(header.size + jsonBytes.size)
+            System.arraycopy(header, 0, packet, 0, header.size)
+            System.arraycopy(jsonBytes, 0, packet, header.size, jsonBytes.size)
+            return packet
+        }
+
+        /**
+         * Recursively searches for the first non-blank value matching any of the given keys in a JSONObject.
+         */
+        fun findValueInJson(obj: Any?, vararg keys: String): String {
+            if (obj == null) return ""
+            if (obj is JSONObject) {
+                for (key in keys) {
+                    if (obj.has(key)) {
+                        val v = obj.optString(key)
+                        if (v.isNotBlank() && v != "null") return v.trim()
+                    }
+                }
+                val it = obj.keys()
+                while (it.hasNext()) {
+                    val k = it.next()
+                    val child = obj.opt(k)
+                    val res = findValueInJson(child, *keys)
+                    if (res.isNotBlank()) return res
+                }
+            } else if (obj is JSONArray) {
+                for (i in 0 until obj.length()) {
+                    val res = findValueInJson(obj.opt(i), *keys)
+                    if (res.isNotBlank()) return res
+                }
+            }
+            return ""
+        }
     }
 
     suspend fun scan(
@@ -28,43 +80,56 @@ class DahuaDiscoveryScanner {
     ) = withContext(Dispatchers.IO) {
         var socket: DatagramSocket? = null
         try {
-            // Try to bind to port 37810 with SO_REUSEADDR so we receive Dahua broadcast responses
             socket = try {
                 MulticastSocket(DAHUA_PORT).apply {
                     reuseAddress = true
                     broadcast = true
-                    soTimeout = 400
-                    try {
-                        joinGroup(InetAddress.getByName(DAHUA_MULTICAST_GROUP))
-                    } catch (ignored: Exception) {}
+                    soTimeout = 350
+                    if (networkInterface != null) {
+                        try {
+                            setNetworkInterface(networkInterface)
+                            joinGroup(InetSocketAddress(InetAddress.getByName(DAHUA_MULTICAST_GROUP), DAHUA_PORT), networkInterface)
+                        } catch (e: Exception) {
+                            Log.v(TAG, "Join multicast with interface failed: ${e.message}")
+                            try { joinGroup(InetAddress.getByName(DAHUA_MULTICAST_GROUP)) } catch (ignored: Exception) {}
+                        }
+                    } else {
+                        try { joinGroup(InetAddress.getByName(DAHUA_MULTICAST_GROUP)) } catch (ignored: Exception) {}
+                    }
                 }
             } catch (e: Exception) {
+                Log.w(TAG, "Port $DAHUA_PORT busy or restricted, using ephemeral socket: ${e.message}")
                 DatagramSocket().apply {
                     broadcast = true
-                    soTimeout = 400
+                    soTimeout = 350
                 }
             }
 
             val localPort = socket.localPort
 
-            // 1. Standard Dahua client.search with uniPort
-            val probeJson1 = JSONObject().apply {
-                put("method", "client.search")
-                put("params", JSONObject().apply {
-                    put("mac", "")
-                    put("uniPort", localPort)
-                })
-            }.toString()
+            // Payloads:
+            // 1. Binary DHIP Header + DHDiscover.search (The official ConfigTool protocol)
+            val dhipQuery = "{\"method\":\"DHDiscover.search\",\"params\":{\"mac\":\"\",\"uni\":1}}"
+            val dhipBinaryPacket = buildDhipPacket(dhipQuery)
 
-            // 2. Fallback plain client.search without uniPort
-            val probeJson2 = "{\"method\":\"client.search\",\"params\":{\"mac\":\"\"}}"
+            // 2. Plain JSON DHDiscover.search
+            val plainDhipPacket = dhipQuery.toByteArray(Charsets.UTF_8)
+
+            // 3. Plain JSON client.search with ephemeral local port for unicast response
+            val clientSearchWithPort = "{\"method\":\"client.search\",\"params\":{\"mac\":\"\",\"uniPort\":$localPort}}"
+            val clientSearchWithPortBytes = clientSearchWithPort.toByteArray(Charsets.UTF_8)
+
+            // 4. Plain JSON client.search
+            val clientSearchBytes = "{\"method\":\"client.search\",\"params\":{\"mac\":\"\"}}".toByteArray(Charsets.UTF_8)
 
             val packetsToSend = listOf(
-                probeJson1.toByteArray(Charsets.UTF_8),
-                probeJson2.toByteArray(Charsets.UTF_8)
+                dhipBinaryPacket,
+                plainDhipPacket,
+                clientSearchWithPortBytes,
+                clientSearchBytes
             )
 
-            // Send to Multicast Group 239.255.255.251
+            // Multicast destination
             try {
                 val group = InetAddress.getByName(DAHUA_MULTICAST_GROUP)
                 for (bytes in packetsToSend) {
@@ -74,8 +139,9 @@ class DahuaDiscoveryScanner {
                 Log.w(TAG, "Dahua multicast send error: ${e.message}")
             }
 
-            // Send to Local Broadcast Addresses
-            for (broadcastAddr in broadcastAddresses) {
+            // Broadcast destinations (Global 255.255.255.255 and Subnet Broadcasts)
+            val targets = (broadcastAddresses + InetAddress.getByName("255.255.255.255")).distinct()
+            for (broadcastAddr in targets) {
                 for (bytes in packetsToSend) {
                     try {
                         socket.send(DatagramPacket(bytes, bytes.size, broadcastAddr, DAHUA_PORT))
@@ -94,12 +160,13 @@ class DahuaDiscoveryScanner {
                 try {
                     socket.receive(packet)
                     val responseStr = String(packet.data, 0, packet.length, Charsets.UTF_8)
-                    val devices = parseDahuaResponses(responseStr, packet.address.hostAddress ?: "")
-                    for (dev in devices) {
-                        onDeviceFound(dev)
+                    val hostIp = packet.address?.hostAddress ?: ""
+                    val device = parseDahuaPacket(responseStr, hostIp)
+                    if (device != null) {
+                        onDeviceFound(device)
                     }
                 } catch (e: SocketTimeoutException) {
-                    // Periodic read timeout, continue listening
+                    // Normal timeout per read cycle
                 } catch (e: Exception) {
                     Log.v(TAG, "Dahua receive error: ${e.message}")
                 }
@@ -111,110 +178,64 @@ class DahuaDiscoveryScanner {
         }
     }
 
-    private fun parseDahuaResponses(response: String, fallbackIp: String): List<CameraDevice> {
-        val resultList = mutableListOf<CameraDevice>()
+    /**
+     * Parses a Dahua discovery packet (both binary framed and plain JSON) to extract device details.
+     */
+    fun parseDahuaPacket(response: String, fallbackIp: String): CameraDevice? {
         try {
             val jsonStartIndex = response.indexOf('{')
-            if (jsonStartIndex == -1) return emptyList()
+            if (jsonStartIndex == -1) return null
             val jsonStr = response.substring(jsonStartIndex)
-
             val root = JSONObject(jsonStr)
-            val params = root.optJSONObject("params") ?: return emptyList()
 
-            // Some firmwares return a "device" object, others an array "devices", others flat inside params
-            val deviceObjects = mutableListOf<JSONObject>()
-            when {
-                params.has("device") -> params.optJSONObject("device")?.let { deviceObjects.add(it) }
-                params.has("devices") -> {
-                    val arr = params.optJSONArray("devices")
-                    if (arr != null) {
-                        for (i in 0 until arr.length()) {
-                            arr.optJSONObject(i)?.let { deviceObjects.add(it) }
-                        }
-                    }
-                }
-                else -> deviceObjects.add(params)
-            }
+            // Recursive extraction guarantees fields are found in any firmware format
+            val hostIp = findValueInJson(root, "HostIP", "IPAddress", "ip", "HostIp").ifBlank { fallbackIp }
+            if (hostIp.isBlank()) return null
 
-            for (deviceObj in deviceObjects) {
-                val ipv4Obj = deviceObj.optJSONObject("IPv4Address")
-                val hostIp = ipv4Obj?.optString("HostIP")?.takeIf { it.isNotBlank() } ?: fallbackIp
-                val gateway = ipv4Obj?.optString("GateWay") ?: ""
-                val subnetMask = ipv4Obj?.optString("SubnetMask") ?: "255.255.255.0"
+            var mac = findValueInJson(root, "MACAddress", "MacAddress", "MAC", "mac", "macAddress", "Mac")
+                .uppercase().replace("-", ":")
 
-                var mac = (deviceObj.optString("MAC").takeIf { it.isNotBlank() }
-                    ?: deviceObj.optString("mac")
-                    ?: deviceObj.optString("MacAddress")).uppercase().replace("-", ":")
+            val serialNo = findValueInJson(root, "SerialNo", "serialNo", "SN", "sn", "serialNumber", "deviceSN")
+            val machineName = findValueInJson(root, "DeviceType", "deviceType", "MachineName", "machineName", "model", "Model")
+                .ifBlank { "Dahua Device" }
 
-                // If MAC missing, resolve from ARP table
-                if (mac.isBlank()) {
-                    mac = getMacFromArp(hostIp)
-                }
+            val gateway = findValueInJson(root, "GateWay", "Gateway", "gateway")
+            val subnetMask = findValueInJson(root, "SubnetMask", "subnetMask").ifBlank { "255.255.255.0" }
 
-                val serialNo = deviceObj.optString("SerialNo").takeIf { it.isNotBlank() }
-                    ?: deviceObj.optString("sn").takeIf { it.isNotBlank() }
-                    ?: deviceObj.optString("SN").takeIf { it.isNotBlank() }
-                    ?: deviceObj.optString("serialNumber").takeIf { it.isNotBlank() }
-                    ?: deviceObj.optString("deviceSN")
+            val httpPortStr = findValueInJson(root, "HttpPort", "httpPort", "webPort")
+            val httpPort = httpPortStr.toIntOrNull() ?: 80
 
-                val machineName = deviceObj.optString("MachineName").takeIf { it.isNotBlank() }
-                    ?: deviceObj.optString("deviceType").takeIf { it.isNotBlank() }
-                    ?: deviceObj.optString("DeviceType").takeIf { it.isNotBlank() }
-                    ?: deviceObj.optString("model").takeIf { it.isNotBlank() }
-                    ?: "Dahua Device"
+            val sdkPortStr = findValueInJson(root, "Port", "TCPPort", "tcpPort")
+            val sdkPort = sdkPortStr.toIntOrNull() ?: 37777
 
-                val tcpPort = deviceObj.optInt("Port", 37777)
-                val httpPort = deviceObj.optInt("HttpPort", 80)
-                val version = deviceObj.optString("Version", "")
+            val version = findValueInJson(root, "Version", "version", "SoftwareVersion")
+            val dhcpVal = findValueInJson(root, "dhcp", "DHCP")
+            val isDhcp = (dhcpVal.equals("true", ignoreCase = true) || dhcpVal == "1")
 
-                val initStatus = deviceObj.optInt("InitStatus", 2)
-                val isActivated = (initStatus == 2)
-                val isDhcp = deviceObj.optBoolean("DHCP", false)
+            val brand = DeviceBrand.fromModelOrVendor("$machineName $serialNo")
+            val (category, channels) = CameraDevice.detectCategoryAndChannels(machineName, serialNo)
 
-                val brand = DeviceBrand.fromModelOrVendor(machineName + " " + serialNo)
-                val (category, channels) = CameraDevice.detectCategoryAndChannels(machineName, serialNo)
-
-                val device = CameraDevice(
-                    id = if (mac.isNotBlank()) mac else (if (serialNo.isNotBlank()) serialNo else hostIp),
-                    brand = if (brand == DeviceBrand.ONVIF) DeviceBrand.DAHUA else brand,
-                    category = category,
-                    channelCount = channels,
-                    model = machineName,
-                    serialNumber = serialNo,
-                    macAddress = mac,
-                    ipv4Address = hostIp,
-                    ipv4SubnetMask = subnetMask,
-                    ipv4Gateway = gateway,
-                    isDhcpEnabled = isDhcp,
-                    isActivated = isActivated,
-                    httpPort = httpPort,
-                    sdkPort = tcpPort,
-                    firmwareVersion = version,
-                    rawProtocol = "DHIP"
-                )
-                resultList.add(device)
-            }
+            return CameraDevice(
+                id = if (mac.isNotBlank()) mac else (if (serialNo.isNotBlank()) serialNo else hostIp),
+                brand = if (brand == DeviceBrand.ONVIF || brand == DeviceBrand.UNKNOWN) DeviceBrand.DAHUA else brand,
+                category = category,
+                channelCount = channels,
+                model = machineName,
+                serialNumber = serialNo,
+                macAddress = mac,
+                ipv4Address = hostIp,
+                ipv4SubnetMask = subnetMask,
+                ipv4Gateway = gateway,
+                isDhcpEnabled = isDhcp,
+                isActivated = true,
+                httpPort = httpPort,
+                sdkPort = sdkPort,
+                firmwareVersion = version,
+                rawProtocol = "DHIP"
+            )
         } catch (e: Exception) {
             Log.v(TAG, "Error parsing Dahua JSON: ${e.message}")
+            return null
         }
-        return resultList
-    }
-
-    private fun getMacFromArp(ip: String): String {
-        try {
-            BufferedReader(FileReader("/proc/net/arp")).use { reader ->
-                var line: String?
-                while (reader.readLine().also { line = it } != null) {
-                    val tokens = line!!.split("\\s+".toRegex())
-                    if (tokens.size >= 4 && tokens[0] == ip) {
-                        val mac = tokens[3]
-                        if (mac != "00:00:00:00:00:00") {
-                            return mac.uppercase()
-                        }
-                    }
-                }
-            }
-        } catch (ignored: Exception) {}
-        return ""
     }
 }

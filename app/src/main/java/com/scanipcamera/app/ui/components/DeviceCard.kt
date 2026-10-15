@@ -1,7 +1,11 @@
 package com.scanipcamera.app.ui.components
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -168,22 +172,40 @@ fun DeviceCard(
 
                 Spacer(modifier = Modifier.height(4.dp))
 
-                // MAC Address
+                // MAC Address (Clickable to copy)
                 Text(
                     text = "MAC: ${device.macAddress.ifEmpty { "Chưa có MAC" }}",
                     fontSize = 12.sp,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Medium,
-                    color = Color(0xFF616161)
+                    color = Color(0xFF616161),
+                    modifier = Modifier.clickable {
+                        if (device.macAddress.isNotBlank()) {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText("MAC Address", device.macAddress))
+                            Toast.makeText(context, "Đã sao chép MAC: ${device.macAddress}", Toast.LENGTH_SHORT).show()
+                        } else {
+                            onDiagnosticClick()
+                        }
+                    }
                 )
 
-                // Serial Number (Highlighted in bright cyan/blue just like in the screenshot!)
+                // Serial Number (Highlighted in bright cyan/blue, clickable to copy)
                 Text(
                     text = "S/N: ${device.serialNumber.ifEmpty { "N/A" }}",
                     fontSize = 12.sp,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF0288D1)
+                    color = Color(0xFF0288D1),
+                    modifier = Modifier.clickable {
+                        if (device.serialNumber.isNotBlank()) {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText("Serial Number", device.serialNumber))
+                            Toast.makeText(context, "Đã sao chép S/N: ${device.serialNumber}", Toast.LENGTH_SHORT).show()
+                        } else {
+                            onDiagnosticClick()
+                        }
+                    }
                 )
             }
 

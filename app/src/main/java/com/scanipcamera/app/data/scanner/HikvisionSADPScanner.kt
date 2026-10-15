@@ -54,7 +54,8 @@ class HikvisionSADPScanner {
             }
 
             // 2. Also send to all local broadcast addresses
-            for (broadcastAddr in broadcastAddresses) {
+            val targets = (broadcastAddresses + InetAddress.getByName("255.255.255.255")).distinct()
+            for (broadcastAddr in targets) {
                 try {
                     val broadcastPacket = DatagramPacket(probeBytes, probeBytes.size, broadcastAddr, SADP_PORT)
                     socket.send(broadcastPacket)

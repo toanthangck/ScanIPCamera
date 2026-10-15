@@ -7,6 +7,7 @@ import com.scanipcamera.app.data.model.DeviceBrand
 import com.scanipcamera.app.data.model.DeviceCategory
 import com.scanipcamera.app.data.network.NetworkUtils
 import com.scanipcamera.app.data.network.WifiNetworkInfo
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,15 +15,14 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
 enum class ScanMode {
-    UDP_DISCOVERY, // SADP + Dahua + ONVIF
-    SUBNET_PING    // TCP Port probe 1..254
+    UDP_DISCOVERY, // SADP + Dahua + ONVIF + Smart Subnet Probe
+    SUBNET_PING    // Pure TCP Port probe 1..254
 }
 
 class DeviceScannerManager(private val context: Context) {
 
     val networkUtils = NetworkUtils(context)
     private val hikvisionScanner = HikvisionSADPScanner()
-    private val dahuaScanner = DahuaDiscoveryScanner()
     private val onvifScanner = OnvifWsDiscoveryScanner()
     private val subnetScanner = SubnetIpScanner()
 
@@ -43,23 +43,39 @@ class DeviceScannerManager(private val context: Context) {
         _wifiInfo.value = networkUtils.getCurrentWifiInfo()
     }
 
-    private fun addOrUpdateDevice(device: CameraDevice) {
-        synchronized(discoveredMap) {
-            val key = if (device.macAddress.isNotBlank()) device.macAddress else device.ipv4Address
-            val existing = discoveredMap[key]
+    private fun addOrUpdateDevice(device: CameraDevice, scope: CoroutineScope? = null) {
+        var needsDeepProbe = false
+        var targetIp = ""
 
-            if (existing == null) {
-                discoveredMap[key] = device
+        synchronized(discoveredMap) {
+            // Find existing device matching either MAC address or IPv4 address
+            val existingEntry = discoveredMap.entries.firstOrNull { (_, dev) ->
+                (dev.macAddress.isNotBlank() && device.macAddress.isNotBlank() && dev.macAddress.equals(device.macAddress, ignoreCase = true)) ||
+                (dev.ipv4Address.isNotBlank() && dev.ipv4Address == device.ipv4Address)
+            }
+
+            val finalKey = if (device.macAddress.isNotBlank()) device.macAddress else (existingEntry?.value?.macAddress?.takeIf { it.isNotBlank() } ?: device.ipv4Address)
+
+            if (existingEntry == null) {
+                discoveredMap[finalKey] = device
+                if (device.macAddress.isBlank() || device.serialNumber.isBlank()) {
+                    needsDeepProbe = true
+                    targetIp = device.ipv4Address
+                }
             } else {
+                val existing = existingEntry.value
+                val existingKey = existingEntry.key
+
                 val mergedMac = if (existing.macAddress.isNotBlank()) existing.macAddress else device.macAddress
                 val mergedSerial = if (existing.serialNumber.isNotBlank()) existing.serialNumber else device.serialNumber
                 val mergedBrand = if (existing.brand != DeviceBrand.ONVIF && existing.brand != DeviceBrand.UNKNOWN) existing.brand else device.brand
-                val mergedModel = if (existing.model != "ONVIF Camera" && existing.model.isNotBlank()) existing.model else device.model
-                val mergedCategory = if (existing.category != com.scanipcamera.app.data.model.DeviceCategory.CAMERA) existing.category else device.category
+                val mergedModel = if (existing.model != "ONVIF Camera" && existing.model != "Dahua Device" && existing.model.isNotBlank()) existing.model else device.model
+                val mergedCategory = if (existing.category != DeviceCategory.CAMERA) existing.category else device.category
                 val mergedChannels = if (existing.channelCount > 0) existing.channelCount else device.channelCount
                 val mergedProtocol = if (device.rawProtocol == "SADP" || device.rawProtocol == "DHIP") device.rawProtocol else existing.rawProtocol
 
                 val merged = existing.copy(
+                    id = if (mergedMac.isNotBlank()) mergedMac else (if (mergedSerial.isNotBlank()) mergedSerial else existing.ipv4Address),
                     macAddress = mergedMac,
                     serialNumber = mergedSerial,
                     brand = mergedBrand,
@@ -70,13 +86,34 @@ class DeviceScannerManager(private val context: Context) {
                     httpPort = if (device.httpPort > 0) device.httpPort else existing.httpPort,
                     sdkPort = if (device.sdkPort > 0) device.sdkPort else existing.sdkPort
                 )
-                discoveredMap[key] = merged
+
+                if (existingKey != finalKey) {
+                    discoveredMap.remove(existingKey)
+                }
+                discoveredMap[finalKey] = merged
+
+                if (merged.macAddress.isBlank() || merged.serialNumber.isBlank()) {
+                    needsDeepProbe = true
+                    targetIp = merged.ipv4Address
+                }
             }
             _devices.value = discoveredMap.values.toList()
         }
+
+        // Asynchronously probe devices that are missing MAC or Serial Number
+        if (needsDeepProbe && targetIp.isNotBlank() && scope != null) {
+            scope.launch {
+                try {
+                    val probed = DeviceDeepProbe.probeDevice(targetIp)
+                    if (probed != null && (probed.macAddress.isNotBlank() || probed.serialNumber.isNotBlank())) {
+                        addOrUpdateDevice(probed, null)
+                    }
+                } catch (ignored: Exception) {}
+            }
+        }
     }
 
-    suspend fun startScan(timeoutMs: Int = 3500, clearExisting: Boolean = true) {
+    suspend fun startScan(timeoutMs: Int = 4000, clearExisting: Boolean = true) {
         if (_isScanning.value) return
 
         refreshWifiInfo()
@@ -92,26 +129,49 @@ class DeviceScannerManager(private val context: Context) {
         try {
             networkUtils.acquireMulticastLock()
             val broadcastAddresses = networkUtils.getBroadcastAddresses()
+            val wifiInterface = networkUtils.getWifiNetworkInterface()
+            val dahuaScanner = DahuaDiscoveryScanner(wifiInterface)
 
             coroutineScope {
-                launch {
-                    hikvisionScanner.scan(timeoutMs, broadcastAddresses) { device ->
-                        addOrUpdateDevice(device)
-                    }
-                }
+                val scope = this
+
+                // 1. Dahua Multicast + Broadcast + DHIP Binary Framing Scanner
                 launch {
                     dahuaScanner.scan(timeoutMs, broadcastAddresses) { device ->
-                        addOrUpdateDevice(device)
+                        addOrUpdateDevice(device, scope)
                     }
                 }
+
+                // 2. Hikvision SADP Discovery Scanner
+                launch {
+                    hikvisionScanner.scan(timeoutMs, broadcastAddresses) { device ->
+                        addOrUpdateDevice(device, scope)
+                    }
+                }
+
+                // 3. ONVIF WS-Discovery Scanner
                 launch {
                     onvifScanner.scan(timeoutMs, broadcastAddresses) { device ->
-                        addOrUpdateDevice(device)
+                        addOrUpdateDevice(device, scope)
+                    }
+                }
+
+                // 4. Concurrently scan the subnet so devices behind routers with multicast/broadcast filtering are ALSO found
+                launch {
+                    val currentIp = _wifiInfo.value.ipAddress.ifBlank { networkUtils.getLocalIpAddress() ?: "" }
+                    if (currentIp.isNotBlank()) {
+                        subnetScanner.scanSubnet(
+                            localIp = currentIp,
+                            onProgress = { _, _ -> },
+                            onDeviceFound = { device ->
+                                addOrUpdateDevice(device, scope)
+                            }
+                        )
                     }
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "UDP Scan orchestration error", e)
+            Log.e(TAG, "Scan orchestration error", e)
         } finally {
             networkUtils.releaseMulticastLock()
             _isScanning.value = false
@@ -137,15 +197,18 @@ class DeviceScannerManager(private val context: Context) {
         }
 
         try {
-            subnetScanner.scanSubnet(
-                localIp = currentIp,
-                onProgress = { current, total ->
-                    _scanProgress.value = Pair(current, total)
-                },
-                onDeviceFound = { device ->
-                    addOrUpdateDevice(device)
-                }
-            )
+            coroutineScope {
+                val scope = this
+                subnetScanner.scanSubnet(
+                    localIp = currentIp,
+                    onProgress = { current, total ->
+                        _scanProgress.value = Pair(current, total)
+                    },
+                    onDeviceFound = { device ->
+                        addOrUpdateDevice(device, scope)
+                    }
+                )
+            }
         } catch (e: Exception) {
             Log.e(TAG, "Subnet scan error", e)
         } finally {

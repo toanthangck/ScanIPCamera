@@ -59,6 +59,34 @@ class NetworkUtils(private val context: Context) {
     }
 
     /**
+     * Find active Wi-Fi or local network interface (wlan0, eth0, etc.)
+     */
+    fun getWifiNetworkInterface(): NetworkInterface? {
+        try {
+            val interfaces = NetworkInterface.getNetworkInterfaces() ?: return null
+            for (iface in interfaces) {
+                if (!iface.isUp || iface.isLoopback) continue
+                val name = iface.name.lowercase()
+                if (name.startsWith("wlan") || name.startsWith("ap") || name.startsWith("eth") || name.contains("wlan")) {
+                    return iface
+                }
+            }
+            // Fallback: first up, non-loopback with IPv4
+            for (iface in interfaces) {
+                if (!iface.isUp || iface.isLoopback) continue
+                for (addr in iface.inetAddresses) {
+                    if (addr is Inet4Address && !addr.isLoopbackAddress) {
+                        return iface
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error retrieving WiFi NetworkInterface", e)
+        }
+        return null
+    }
+
+    /**
      * Get the current device's local IPv4 address.
      */
     fun getLocalIpAddress(): String? {

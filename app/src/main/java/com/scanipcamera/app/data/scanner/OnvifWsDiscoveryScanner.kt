@@ -63,7 +63,8 @@ class OnvifWsDiscoveryScanner {
             }
 
             // Send to broadcast
-            for (broadcastAddr in broadcastAddresses) {
+            val targets = (broadcastAddresses + InetAddress.getByName("255.255.255.255")).distinct()
+            for (broadcastAddr in targets) {
                 try {
                     socket.send(DatagramPacket(probeBytes, probeBytes.size, broadcastAddr, ONVIF_PORT))
                 } catch (e: Exception) {

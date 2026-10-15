@@ -42,23 +42,29 @@ class SubnetIpScanner {
                     try {
                         val openPorts = checkOpenPorts(targetIp)
                         if (openPorts.isNotEmpty()) {
-                            val mac = getMacFromArp(targetIp)
-                            val brand = inferBrandFromPorts(openPorts)
-                            val modelName = "${brand.displayName} (Port ${openPorts.first()})"
-                            val category = if (openPorts.contains(37777) || openPorts.contains(8000)) DeviceCategory.NVR else DeviceCategory.CAMERA
-                            val device = CameraDevice(
-                                id = if (mac.isNotBlank()) mac else targetIp,
-                                brand = brand,
-                                category = category,
-                                model = modelName,
-                                macAddress = mac,
-                                ipv4Address = targetIp,
-                                httpPort = if (openPorts.contains(80)) 80 else if (openPorts.contains(8080)) 8080 else 80,
-                                sdkPort = if (openPorts.contains(8000)) 8000 else if (openPorts.contains(37777)) 37777 else 8000,
-                                rtspPort = if (openPorts.contains(554)) 554 else 554,
-                                rawProtocol = "PING/PORT"
-                            )
-                            onDeviceFound(device)
+                            // Deep probe to actively extract MAC, Serial, and precise Model directly over unicast
+                            val probed = DeviceDeepProbe.probeDevice(targetIp, openPorts)
+                            if (probed != null) {
+                                onDeviceFound(probed)
+                            } else {
+                                val mac = getMacFromArp(targetIp)
+                                val brand = inferBrandFromPorts(openPorts)
+                                val modelName = "${brand.displayName} (Port ${openPorts.first()})"
+                                val category = if (openPorts.contains(37777) || openPorts.contains(8000)) DeviceCategory.NVR else DeviceCategory.CAMERA
+                                val device = CameraDevice(
+                                    id = if (mac.isNotBlank()) mac else targetIp,
+                                    brand = brand,
+                                    category = category,
+                                    model = modelName,
+                                    macAddress = mac,
+                                    ipv4Address = targetIp,
+                                    httpPort = if (openPorts.contains(80)) 80 else if (openPorts.contains(8080)) 8080 else 80,
+                                    sdkPort = if (openPorts.contains(8000)) 8000 else if (openPorts.contains(37777)) 37777 else 8000,
+                                    rtspPort = if (openPorts.contains(554)) 554 else 554,
+                                    rawProtocol = "PING/PORT"
+                                )
+                                onDeviceFound(device)
+                            }
                         }
                     } catch (e: Exception) {
                         Log.v(TAG, "Host check error $targetIp: ${e.message}")
