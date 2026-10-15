@@ -977,11 +977,7 @@ fun ScannerScreen(
             device = dev,
             currentUsername = defaultUser,
             currentPassword = defaultPassword,
-            onDismiss = { viewModel.closeSettingsDialog() },
-            onUpdatePassword = { newPass ->
-                defaultPassword = newPass
-                viewModel.updateDefaultCredentials(defaultUser, newPass, newPass)
-            }
+            onDismiss = { viewModel.closeSettingsDialog() }
         )
     }
 

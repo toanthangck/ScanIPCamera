@@ -37,6 +37,7 @@ import com.scanipcamera.app.data.config.CameraConfigService
 import com.scanipcamera.app.data.config.CameraImageSettings
 import com.scanipcamera.app.data.config.CameraVideoSettings
 import com.scanipcamera.app.data.model.CameraDevice
+import com.scanipcamera.app.data.model.DeviceCategory
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -49,8 +50,7 @@ fun CameraSettingsDialog(
     device: CameraDevice,
     currentUsername: String = "admin",
     currentPassword: String = "",
-    onDismiss: () -> Unit,
-    onUpdatePassword: ((String) -> Unit)? = null
+    onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -60,10 +60,9 @@ fun CameraSettingsDialog(
     var operationResult by remember { mutableStateOf<String?>(null) }
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Chống ngược sáng & Màu sắc, 1: Độ phân giải & Video
 
-    // Editable credentials inside dialog (initialized from master credentials)
-    var user by remember { mutableStateOf(currentUsername.ifBlank { "admin" }) }
-    var password by remember { mutableStateOf(currentPassword) }
-    var passwordVisible by remember { mutableStateOf(false) }
+    // Master credentials taken directly from main screen
+    val user = currentUsername.ifBlank { "admin" }
+    val password = currentPassword
     var selectedChannel by remember { mutableIntStateOf(1) }
 
     // Live Snapshot states
@@ -200,194 +199,45 @@ fun CameraSettingsDialog(
                     }
                 }
 
-                // ==========================================
-                // CREDENTIAL & CHANNEL BAR
-                // ==========================================
-                Surface(
-                    shape = RoundedCornerShape(10.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 4.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                // Channel selector if multi-channel device (NVR/DVR or channelCount > 1)
+                val isMultiChannel = device.channelCount > 1 || device.category == DeviceCategory.NVR || device.category == DeviceCategory.DVR
+                if (isMultiChannel) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 2.dp)
+                            .horizontalScroll(rememberScrollState()),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        // Title + sync note
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    Icons.Default.VpnKey,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(14.dp)
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Text(
-                                    text = "Xác thực thiết bị (Mặc định lấy từ màn hình chính):",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                            if (password.isNotEmpty()) {
-                                Surface(
-                                    shape = RoundedCornerShape(4.dp),
-                                    color = Color(0xFF10B981).copy(alpha = 0.15f)
+                        Text(
+                            text = "Kênh:",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        val totalChannels = if (device.channelCount > 1) device.channelCount else 4
+                        (1..totalChannels).forEach { ch ->
+                            val isSelected = (selectedChannel == ch)
+                            Surface(
+                                onClick = {
+                                    selectedChannel = ch
+                                    refreshSnapshot()
+                                },
+                                shape = RoundedCornerShape(6.dp),
+                                color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
+                                modifier = Modifier.height(26.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier.padding(horizontal = 8.dp),
+                                    contentAlignment = Alignment.Center
                                 ) {
                                     Text(
-                                        text = "Đã điền",
-                                        fontSize = 9.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF059669),
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                        text = "Kênh $ch",
+                                        fontSize = 10.5.sp,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
                                     )
-                                }
-                            }
-                        }
-
-                        // Input fields: User, Password, Load Button
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            // Username
-                            OutlinedTextField(
-                                value = user,
-                                onValueChange = { user = it },
-                                label = { Text("Tài khoản", fontSize = 10.sp) },
-                                singleLine = true,
-                                modifier = Modifier
-                                    .width(96.dp)
-                                    .height(48.dp),
-                                shape = RoundedCornerShape(8.dp),
-                                textStyle = LocalTextStyle.current.copy(fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
-                            )
-
-                            // Password with Visibility Toggle
-                            OutlinedTextField(
-                                value = password,
-                                onValueChange = { password = it },
-                                label = { Text("Mật khẩu", fontSize = 10.sp) },
-                                singleLine = true,
-                                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
-                                trailingIcon = {
-                                    IconButton(
-                                        onClick = { passwordVisible = !passwordVisible },
-                                        modifier = Modifier.size(28.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
-                                            contentDescription = null,
-                                            modifier = Modifier.size(16.dp),
-                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-                                },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .height(48.dp),
-                                shape = RoundedCornerShape(8.dp),
-                                textStyle = LocalTextStyle.current.copy(fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
-                            )
-
-                            // Load Snapshot Button
-                            Button(
-                                onClick = {
-                                    refreshSnapshot()
-                                    onUpdatePassword?.invoke(password.trim())
-                                },
-                                modifier = Modifier.height(48.dp),
-                                shape = RoundedCornerShape(8.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
-                                contentPadding = PaddingValues(horizontal = 10.dp)
-                            ) {
-                                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(15.dp))
-                                Spacer(modifier = Modifier.width(3.dp))
-                                Text("Tải ảnh", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-
-                        // Quick Password Chips Row
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
-                        ) {
-                            Text("Mẫu:", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            listOf("Admin@123456", "admin12345", "admin123", "123456", "admin").forEach { samplePass ->
-                                Surface(
-                                    onClick = {
-                                        password = samplePass
-                                        onUpdatePassword?.invoke(samplePass)
-                                        refreshSnapshot()
-                                    },
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = if (password == samplePass) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
-                                    border = androidx.compose.foundation.BorderStroke(
-                                        0.8.dp,
-                                        if (password == samplePass) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
-                                    ),
-                                    modifier = Modifier.height(24.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier.padding(horizontal = 5.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = samplePass,
-                                            fontSize = 9.5.sp,
-                                            fontFamily = FontFamily.Monospace,
-                                            fontWeight = if (password == samplePass) FontWeight.Bold else FontWeight.Normal,
-                                            color = if (password == samplePass) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        // Channel Selector Chips (Kênh 1, Kênh 2, Kênh 3, Kênh 4)
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text("Kênh:", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            listOf(1, 2, 3, 4).forEach { ch ->
-                                val isSelected = (selectedChannel == ch)
-                                Surface(
-                                    onClick = {
-                                        selectedChannel = ch
-                                        refreshSnapshot()
-                                    },
-                                    shape = RoundedCornerShape(6.dp),
-                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
-                                    border = androidx.compose.foundation.BorderStroke(
-                                        0.8.dp,
-                                        if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
-                                    ),
-                                    modifier = Modifier.height(24.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier.padding(horizontal = 7.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Text(
-                                            text = "Kênh $ch",
-                                            fontSize = 9.5.sp,
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                            color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
-                                        )
-                                    }
                                 }
                             }
                         }
@@ -471,7 +321,7 @@ fun CameraSettingsDialog(
                                         if (snapshotError?.contains("401") == true) {
                                             Spacer(modifier = Modifier.height(4.dp))
                                             Text(
-                                                text = "Gợi ý: Hãy bấm các nút mật khẩu mẫu ở trên hoặc gõ mật khẩu đúng",
+                                                text = "Gợi ý: Vui lòng kiểm tra lại mật khẩu thiết bị trên màn hình chính",
                                                 fontSize = 10.sp,
                                                 color = Color(0xFFFCD34D),
                                                 textAlign = androidx.compose.ui.text.style.TextAlign.Center
