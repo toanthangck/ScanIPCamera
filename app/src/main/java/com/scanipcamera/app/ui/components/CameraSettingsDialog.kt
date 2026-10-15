@@ -48,7 +48,8 @@ fun CameraSettingsDialog(
     device: CameraDevice,
     currentUsername: String = "admin",
     currentPassword: String = "",
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    onUpdatePassword: ((String) -> Unit)? = null
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -57,6 +58,12 @@ fun CameraSettingsDialog(
     var isOperating by remember { mutableStateOf(false) }
     var operationResult by remember { mutableStateOf<String?>(null) }
     var selectedTab by remember { mutableIntStateOf(0) } // 0: Chống ngược sáng & Màu sắc, 1: Độ phân giải & Video
+
+    // Editable credentials inside dialog (initialized from master credentials)
+    var user by remember { mutableStateOf(currentUsername.ifBlank { "admin" }) }
+    var password by remember { mutableStateOf(currentPassword) }
+    var passwordVisible by remember { mutableStateOf(false) }
+    var selectedChannel by remember { mutableIntStateOf(1) }
 
     // Live Snapshot states
     var snapshotBitmap by remember { mutableStateOf<Bitmap?>(null) }
@@ -83,18 +90,24 @@ fun CameraSettingsDialog(
 
     // Function to load camera snapshot
     fun refreshSnapshot() {
-        if (currentPassword.isBlank()) {
-            snapshotError = "Vui lòng nhập mật khẩu trên màn hình chính!"
+        if (password.isBlank()) {
+            snapshotError = "Vui lòng nhập mật khẩu camera/đầu ghi để tải hình ảnh!"
             return
         }
         isLoadingSnapshot = true
         snapshotError = null
         coroutineScope.launch {
-            val res = configService.fetchCameraSnapshot(device, currentUsername.trim(), currentPassword.trim())
+            val res = configService.fetchCameraSnapshot(
+                device = device,
+                user = user.trim(),
+                pass = password.trim(),
+                channel = selectedChannel
+            )
             isLoadingSnapshot = false
             if (res.isSuccess) {
                 snapshotBitmap = res.getOrNull()
                 lastSnapshotTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
+                snapshotError = null
             } else {
                 snapshotError = res.exceptionOrNull()?.message ?: "Lỗi tải ảnh"
             }
@@ -102,10 +115,15 @@ fun CameraSettingsDialog(
     }
 
     // Auto-refresh timer loop
-    LaunchedEffect(autoRefreshSnapshot) {
-        while (autoRefreshSnapshot) {
+    LaunchedEffect(autoRefreshSnapshot, user, password, selectedChannel) {
+        while (autoRefreshSnapshot && password.isNotBlank()) {
             delay(2500)
-            val res = configService.fetchCameraSnapshot(device, currentUsername.trim(), currentPassword.trim())
+            val res = configService.fetchCameraSnapshot(
+                device = device,
+                user = user.trim(),
+                pass = password.trim(),
+                channel = selectedChannel
+            )
             if (res.isSuccess) {
                 snapshotBitmap = res.getOrNull()
                 lastSnapshotTime = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
@@ -166,7 +184,7 @@ fun CameraSettingsDialog(
                     Surface(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                            .padding(horizontal = 12.dp, vertical = 4.dp),
                         color = Color(0xFF0284C7).copy(alpha = 0.15f),
                         shape = RoundedCornerShape(8.dp)
                     ) {
@@ -181,24 +199,195 @@ fun CameraSettingsDialog(
                     }
                 }
 
-                // Credential Info Badge (Uses master credentials from main screen)
+                // ==========================================
+                // CREDENTIAL & CHANNEL BAR
+                // ==========================================
                 Surface(
-                    shape = RoundedCornerShape(6.dp),
-                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
-                    modifier = Modifier.fillMaxWidth()
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    Column(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Icon(Icons.Default.VpnKey, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(13.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Xác thực: $currentUsername (Mật khẩu tự động lấy từ màn hình chính)",
-                            fontSize = 10.5.sp,
-                            fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                        )
+                        // Title + sync note
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    Icons.Default.VpnKey,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = "Xác thực thiết bị (Mặc định lấy từ màn hình chính):",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                            if (password.isNotEmpty()) {
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = Color(0xFF10B981).copy(alpha = 0.15f)
+                                ) {
+                                    Text(
+                                        text = "Đã điền",
+                                        fontSize = 9.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF059669),
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+
+                        // Input fields: User, Password, Load Button
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Username
+                            OutlinedTextField(
+                                value = user,
+                                onValueChange = { user = it },
+                                label = { Text("Tài khoản", fontSize = 10.sp) },
+                                singleLine = true,
+                                modifier = Modifier
+                                    .width(96.dp)
+                                    .height(48.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                textStyle = LocalTextStyle.current.copy(fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                            )
+
+                            // Password with Visibility Toggle
+                            OutlinedTextField(
+                                value = password,
+                                onValueChange = { password = it },
+                                label = { Text("Mật khẩu", fontSize = 10.sp) },
+                                singleLine = true,
+                                visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
+                                trailingIcon = {
+                                    IconButton(
+                                        onClick = { passwordVisible = !passwordVisible },
+                                        modifier = Modifier.size(28.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                textStyle = LocalTextStyle.current.copy(fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                            )
+
+                            // Load Snapshot Button
+                            Button(
+                                onClick = {
+                                    refreshSnapshot()
+                                    onUpdatePassword?.invoke(password.trim())
+                                },
+                                modifier = Modifier.height(48.dp),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
+                                contentPadding = PaddingValues(horizontal = 10.dp)
+                            ) {
+                                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(15.dp))
+                                Spacer(modifier = Modifier.width(3.dp))
+                                Text("Tải ảnh", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        // Quick Password Chips Row
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text("Mẫu:", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            listOf("Admin@123456", "admin12345", "admin123", "123456", "admin").forEach { samplePass ->
+                                Surface(
+                                    onClick = {
+                                        password = samplePass
+                                        onUpdatePassword?.invoke(samplePass)
+                                        refreshSnapshot()
+                                    },
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = if (password == samplePass) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surface,
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        0.8.dp,
+                                        if (password == samplePass) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                                    ),
+                                    modifier = Modifier.height(24.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier.padding(horizontal = 5.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = samplePass,
+                                            fontSize = 9.5.sp,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = if (password == samplePass) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (password == samplePass) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Channel Selector Chips (Kênh 1, Kênh 2, Kênh 3, Kênh 4)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text("Kênh:", fontSize = 10.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            listOf(1, 2, 3, 4).forEach { ch ->
+                                val isSelected = (selectedChannel == ch)
+                                Surface(
+                                    onClick = {
+                                        selectedChannel = ch
+                                        refreshSnapshot()
+                                    },
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        0.8.dp,
+                                        if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+                                    ),
+                                    modifier = Modifier.height(24.dp)
+                                ) {
+                                    Box(
+                                        modifier = Modifier.padding(horizontal = 7.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = "Kênh $ch",
+                                            fontSize = 9.5.sp,
+                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                            color = if (isSelected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -206,18 +395,17 @@ fun CameraSettingsDialog(
                     modifier = Modifier
                         .weight(1f)
                         .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                        .padding(horizontal = 12.dp, vertical = 4.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     // ==========================================
                     // 1. LIVE CAMERA VIEWFINDER / SNAPSHOT BOX
-                    // (Replaces the old redundant time sync banner)
                     // ==========================================
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
                         colors = CardDefaults.cardColors(containerColor = Color(0xFF0B132B)),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1E293B))
+                        border = androidx.compose.foundation.BorderStroke(1.2.dp, Color(0xFF1E293B))
                     ) {
                         Column {
                             // Viewfinder Screen
@@ -238,14 +426,22 @@ fun CameraSettingsDialog(
                                 } else if (isLoadingSnapshot) {
                                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                         CircularProgressIndicator(
-                                            modifier = Modifier.size(28.dp),
+                                            modifier = Modifier.size(32.dp),
                                             color = Color(0xFF00E5FF),
-                                            strokeWidth = 2.5.dp
+                                            strokeWidth = 2.8.dp
                                         )
                                         Spacer(modifier = Modifier.height(8.dp))
                                         Text(
-                                            text = "Đang nạp hình ảnh từ camera...",
-                                            fontSize = 11.sp,
+                                            text = "Đang kết nối camera & tải ảnh trực tiếp...",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.Medium,
+                                            color = Color(0xFF00E5FF)
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "${device.ipv4Address}:${device.httpPort} • Kênh $selectedChannel",
+                                            fontSize = 10.sp,
+                                            fontFamily = FontFamily.Monospace,
                                             color = Color(0xFF94A3B8)
                                         )
                                     }
@@ -255,27 +451,40 @@ fun CameraSettingsDialog(
                                         modifier = Modifier.padding(16.dp)
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.Videocam,
+                                            imageVector = if (snapshotError?.contains("401") == true) Icons.Default.Lock else Icons.Default.VideocamOff,
                                             contentDescription = null,
-                                            tint = Color(0xFF64748B),
-                                            modifier = Modifier.size(36.dp)
+                                            tint = if (snapshotError?.contains("401") == true) Color(0xFFEF4444) else Color(0xFF94A3B8),
+                                            modifier = Modifier.size(38.dp)
                                         )
                                         Spacer(modifier = Modifier.height(6.dp))
                                         Text(
-                                            text = snapshotError ?: "Chưa có hình ảnh trực tiếp",
-                                            fontSize = 11.sp,
-                                            color = Color(0xFF94A3B8)
+                                            text = snapshotError ?: "Chưa có hình ảnh trực tiếp từ camera",
+                                            fontSize = 11.5.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                            color = if (snapshotError?.contains("401") == true) Color(0xFFFCA5A5) else Color(0xFFE2E8F0),
+                                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                            modifier = Modifier.padding(horizontal = 12.dp)
                                         )
-                                        Spacer(modifier = Modifier.height(8.dp))
+                                        if (snapshotError?.contains("401") == true) {
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = "Gợi ý: Hãy bấm các nút mật khẩu mẫu ở trên hoặc gõ mật khẩu đúng",
+                                                fontSize = 10.sp,
+                                                color = Color(0xFFFCD34D),
+                                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(10.dp))
                                         Button(
                                             onClick = { refreshSnapshot() },
-                                            modifier = Modifier.height(32.dp),
+                                            modifier = Modifier.height(34.dp),
                                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0284C7)),
-                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp)
+                                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 0.dp),
+                                            shape = RoundedCornerShape(8.dp)
                                         ) {
                                             Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
                                             Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Tải hình ảnh Camera", fontSize = 11.sp)
+                                            Text("Thử tải lại ảnh", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
                                 }
@@ -285,7 +494,7 @@ fun CameraSettingsDialog(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .align(Alignment.TopCenter)
-                                        .background(Color(0x88000000))
+                                        .background(Color(0x99000000))
                                         .padding(horizontal = 10.dp, vertical = 4.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
@@ -298,7 +507,7 @@ fun CameraSettingsDialog(
                                         ) {}
                                         Spacer(modifier = Modifier.width(6.dp))
                                         Text(
-                                            text = if (lastSnapshotTime.isNotEmpty()) "TRỰC TIẾP • $lastSnapshotTime" else "HÌNH ẢNH CAMERA",
+                                            text = if (lastSnapshotTime.isNotEmpty()) "TRỰC TIẾP • $lastSnapshotTime (Kênh $selectedChannel)" else "HÌNH ẢNH CAMERA",
                                             fontSize = 10.5.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = Color.White
@@ -325,7 +534,7 @@ fun CameraSettingsDialog(
                                                 )
                                                 Spacer(modifier = Modifier.width(2.dp))
                                                 Text(
-                                                    text = if (autoRefreshSnapshot) "Auto: Bật" else "Auto: Tắt",
+                                                    text = if (autoRefreshSnapshot) "Auto 2s: Bật" else "Auto: Tắt",
                                                     fontSize = 9.5.sp,
                                                     fontWeight = FontWeight.Bold,
                                                     color = Color.White
@@ -361,7 +570,7 @@ fun CameraSettingsDialog(
                                         .padding(horizontal = 10.dp, vertical = 3.dp)
                                 ) {
                                     Text(
-                                        text = "IP: ${device.ipv4Address} • WDR: $selectedWdrMode • Màu: $dayNightMode • Sáng: ${brightness.toInt()}",
+                                        text = "IP: ${device.ipv4Address} • Kênh $selectedChannel • WDR: $selectedWdrMode • Màu: $dayNightMode • Sáng: ${brightness.toInt()}",
                                         fontSize = 10.sp,
                                         fontFamily = FontFamily.Monospace,
                                         color = Color(0xFFE2E8F0)
@@ -724,7 +933,7 @@ fun CameraSettingsDialog(
                                         operationResult = null
                                         coroutineScope.launch {
                                             val res = configService.applyBacklightAndImage(
-                                                device, currentUsername.trim(), currentPassword.trim(),
+                                                device, user.trim(), password.trim(),
                                                 CameraImageSettings(
                                                     brightness = brightness.toInt(),
                                                     contrast = contrast.toInt(),
@@ -859,7 +1068,7 @@ fun CameraSettingsDialog(
                                         operationResult = null
                                         coroutineScope.launch {
                                             val res = configService.applyVideoEncoding(
-                                                device, currentUsername.trim(), currentPassword.trim(),
+                                                device, user.trim(), password.trim(),
                                                 CameraVideoSettings(
                                                     resolution = selectedResolution,
                                                     fps = selectedFps,
