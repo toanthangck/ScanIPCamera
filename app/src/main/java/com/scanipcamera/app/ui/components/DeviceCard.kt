@@ -35,12 +35,15 @@ fun DeviceCard(
     device: CameraDevice,
     phoneIp: String = "",
     phoneMask: String = "255.255.255.0",
+    isIpConflict: Boolean = false,
     onConfigureClick: () -> Unit,
+    onSettingsClick: () -> Unit,
     onActivateClick: () -> Unit,
     onRtspClick: () -> Unit,
     onDiagnosticClick: () -> Unit,
     onWanPortClick: () -> Unit,
     onRebootClick: () -> Unit,
+    onTimeSyncClick: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -128,6 +131,23 @@ fun DeviceCard(
                             color = SubnetMismatchColor,
                             fontSize = 8.5.sp,
                             fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.5.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.width(4.dp))
+                }
+
+                // IP Conflict Critical Warning Badge
+                if (isIpConflict) {
+                    Surface(
+                        color = Color(0xFFDC2626),
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Text(
+                            text = "TRÙNG IP!",
+                            color = Color.White,
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
                             modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.5.dp)
                         )
                     }
@@ -316,9 +336,9 @@ fun DeviceCard(
                     }
                 }
 
-                // Button 3: Test Port WAN
+                // Button 3: Cài đặt (WDR, Độ phân giải, NTP, Hình ảnh)
                 Surface(
-                    onClick = onWanPortClick,
+                    onClick = onSettingsClick,
                     shape = RoundedCornerShape(6.dp),
                     color = Color(0xFF0D9488).copy(alpha = 0.12f),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF0D9488).copy(alpha = 0.45f)),
@@ -330,14 +350,14 @@ fun DeviceCard(
                         horizontalArrangement = Arrangement.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Settings,
+                            imageVector = Icons.Default.Tune,
                             contentDescription = null,
                             tint = Color(0xFF0D9488),
                             modifier = Modifier.size(13.dp)
                         )
                         Spacer(modifier = Modifier.width(3.dp))
                         Text(
-                            text = "Test Port",
+                            text = "Cài đặt",
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF0D9488),
@@ -377,13 +397,35 @@ fun DeviceCard(
                         }
                     }
 
-                    // Dropdown menu for RTSP, Ping diagnostic, Activate, Reboot
+                    // Dropdown menu for RTSP, Ping diagnostic, WAN Port, Time Sync, Activate, Reboot
                     DropdownMenu(
                         expanded = showMenu,
                         onDismissRequest = { showMenu = false }
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Xem luồng RTSP", fontSize = 13.sp) },
+                            text = { Text("Kiểm tra mở Port WAN (NAT)", fontSize = 13.sp) },
+                            onClick = {
+                                showMenu = false
+                                onWanPortClick()
+                            },
+                            leadingIcon = {
+                                Icon(Icons.Default.Public, contentDescription = null, modifier = Modifier.size(16.dp))
+                            }
+                        )
+
+                        DropdownMenuItem(
+                            text = { Text("Đồng bộ giờ điện thoại ngay", fontSize = 13.sp) },
+                            onClick = {
+                                showMenu = false
+                                onTimeSyncClick()
+                            },
+                            leadingIcon = {
+                                Icon(Icons.Default.AccessTime, contentDescription = null, modifier = Modifier.size(16.dp))
+                            }
+                        )
+
+                        DropdownMenuItem(
+                            text = { Text("Xem luồng RTSP & Video", fontSize = 13.sp) },
                             onClick = {
                                 showMenu = false
                                 onRtspClick()

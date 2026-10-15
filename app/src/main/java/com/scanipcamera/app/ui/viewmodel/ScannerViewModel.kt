@@ -3,6 +3,7 @@ package com.scanipcamera.app.ui.viewmodel
 import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.scanipcamera.app.data.config.CameraConfigService
 import com.scanipcamera.app.data.config.DahuaConfigurator
 import com.scanipcamera.app.data.config.HikvisionConfigurator
 import com.scanipcamera.app.data.export.DeviceExportHelper
@@ -10,9 +11,11 @@ import com.scanipcamera.app.data.model.CameraDevice
 import com.scanipcamera.app.data.model.DeviceBrand
 import com.scanipcamera.app.data.model.DeviceCategory
 import com.scanipcamera.app.data.model.NetworkConfigPayload
+import com.scanipcamera.app.data.model.SiteProject
 import com.scanipcamera.app.data.network.WanInfo
 import com.scanipcamera.app.data.network.WanNetworkUtils
 import com.scanipcamera.app.data.network.WifiNetworkInfo
+import com.scanipcamera.app.data.repository.SiteProjectRepository
 import com.scanipcamera.app.data.scanner.DeviceScannerManager
 import com.scanipcamera.app.data.scanner.ScanMode
 import kotlinx.coroutines.flow.*
@@ -23,6 +26,8 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
     private val scannerManager = DeviceScannerManager(application)
     private val hikvisionConfigurator = HikvisionConfigurator()
     private val dahuaConfigurator = DahuaConfigurator()
+    private val cameraConfigService = CameraConfigService()
+    private val siteProjectRepository = SiteProjectRepository(application)
 
     val isScanning = scannerManager.isScanning.stateIn(
         viewModelScope,
@@ -80,9 +85,21 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    // Detect conflicting IP addresses (more than 1 device with same IP in subnet)
+    val conflictingIps: StateFlow<Set<String>> = scannerManager.devices.map { list ->
+        list.groupBy { it.ipv4Address }
+            .filter { (ip, devicesWithIp) ->
+                ip.isNotBlank() && ip != "0.0.0.0" && devicesWithIp.size > 1
+            }
+            .keys
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptySet())
+
     // UI state for Dialogs
     private val _editingDevice = MutableStateFlow<CameraDevice?>(null)
     val editingDevice: StateFlow<CameraDevice?> = _editingDevice
+
+    private val _settingsDevice = MutableStateFlow<CameraDevice?>(null)
+    val settingsDevice: StateFlow<CameraDevice?> = _settingsDevice
 
     private val _activatingDevice = MutableStateFlow<CameraDevice?>(null)
     val activatingDevice: StateFlow<CameraDevice?> = _activatingDevice
@@ -102,9 +119,14 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
     private val _userMessage = MutableStateFlow<String?>(null)
     val userMessage: StateFlow<String?> = _userMessage
 
+    // Site Projects
+    private val _siteProjects = MutableStateFlow<List<SiteProject>>(emptyList())
+    val siteProjects: StateFlow<List<SiteProject>> = _siteProjects.asStateFlow()
+
     init {
         scannerManager.refreshWifiInfo()
         fetchWanInfo()
+        loadSiteProjects()
     }
 
     fun fetchWanInfo() {
@@ -153,6 +175,14 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
         _editingDevice.value = null
     }
 
+    fun openSettingsDialog(device: CameraDevice) {
+        _settingsDevice.value = device
+    }
+
+    fun closeSettingsDialog() {
+        _settingsDevice.value = null
+    }
+
     fun openActivationDialog(device: CameraDevice) {
         _activatingDevice.value = device
     }
@@ -197,6 +227,35 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
         _userMessage.value = null
     }
 
+    /**
+     * Finds the next clean/free sequential IP starting point in the current LAN subnet
+     */
+    fun getSuggestedFreeStartIp(): String {
+        val baseIp = wifiInfo.value.ipAddress.ifEmpty { "192.168.1.100" }
+        val parts = baseIp.split(".")
+        if (parts.size != 4) return "192.168.1.200"
+        val prefix = "${parts[0]}.${parts[1]}.${parts[2]}."
+
+        val occupiedOctets = devices.value.mapNotNull { dev ->
+            val p = dev.ipv4Address.split(".")
+            if (p.size == 4 && "${p[0]}.${p[1]}.${p[2]}." == prefix) p[3].toIntOrNull() else null
+        }.toSet()
+
+        // Check 200..240 first
+        for (cand in 200..240) {
+            if (!occupiedOctets.contains(cand)) {
+                return "$prefix$cand"
+            }
+        }
+        // Fallback to 100..199
+        for (cand in 100..199) {
+            if (!occupiedOctets.contains(cand)) {
+                return "$prefix$cand"
+            }
+        }
+        return "${prefix}200"
+    }
+
     fun applyNetworkConfig(device: CameraDevice, payload: NetworkConfigPayload) {
         viewModelScope.launch {
             val result = when (device.brand) {
@@ -218,6 +277,53 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
                 startScanning()
             }.onFailure { err ->
                 _userMessage.value = "Lỗi: ${err.message}"
+            }
+        }
+    }
+
+    /**
+     * Batch IP assignment for multiple cameras sequentially
+     */
+    fun applyBatchNetworkConfig(payloads: List<Pair<CameraDevice, NetworkConfigPayload>>) {
+        viewModelScope.launch {
+            if (payloads.isEmpty()) return@launch
+            var successCount = 0
+            var failCount = 0
+            val total = payloads.size
+            _userMessage.value = "Đang đổi IP hàng loạt cho $total thiết bị..."
+
+            for ((device, payload) in payloads) {
+                val result = when (device.brand) {
+                    DeviceBrand.HIKVISION, DeviceBrand.EZVIZ -> {
+                        hikvisionConfigurator.configureNetwork(device, payload)
+                    }
+                    DeviceBrand.DAHUA, DeviceBrand.IMOU, DeviceBrand.KBVISION -> {
+                        dahuaConfigurator.configureNetwork(device, payload)
+                    }
+                    else -> {
+                        val hikRes = hikvisionConfigurator.configureNetwork(device, payload)
+                        if (hikRes.isSuccess) hikRes else dahuaConfigurator.configureNetwork(device, payload)
+                    }
+                }
+                if (result.isSuccess) successCount++ else failCount++
+            }
+
+            _userMessage.value = "Đổi IP hàng loạt: $successCount thành công, $failCount thất bại"
+            startScanning()
+        }
+    }
+
+    /**
+     * Quick Time Sync to Phone Clock
+     */
+    fun syncDeviceTime(device: CameraDevice, password: String = "admin123") {
+        viewModelScope.launch {
+            _userMessage.value = "Đang đồng bộ giờ cho ${device.ipv4Address}..."
+            val res = cameraConfigService.syncCameraTimeToPhone(device, "admin", password)
+            res.onSuccess { msg ->
+                _userMessage.value = "Đồng bộ giờ thành công: $msg"
+            }.onFailure { err ->
+                _userMessage.value = "Đồng bộ giờ thất bại: ${err.message}"
             }
         }
     }
@@ -260,6 +366,29 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
             }.onFailure { err ->
                 _userMessage.value = "Khởi động lại thất bại: ${err.message}"
             }
+        }
+    }
+
+    // Site Projects management
+    fun loadSiteProjects() {
+        viewModelScope.launch {
+            _siteProjects.value = siteProjectRepository.getAllProjects()
+        }
+    }
+
+    fun saveSiteProject(project: SiteProject) {
+        viewModelScope.launch {
+            siteProjectRepository.saveProject(project)
+            loadSiteProjects()
+            _userMessage.value = "Đã lưu công trình: ${project.siteName}"
+        }
+    }
+
+    fun deleteSiteProject(projectId: String) {
+        viewModelScope.launch {
+            siteProjectRepository.deleteProject(projectId)
+            loadSiteProjects()
+            _userMessage.value = "Đã xóa công trình"
         }
     }
 

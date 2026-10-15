@@ -49,17 +49,26 @@ fun ScannerScreen(
     val selectedCategoryFilter by viewModel.selectedCategoryFilter.collectAsState()
 
     val editingDevice by viewModel.editingDevice.collectAsState()
+    val settingsDevice by viewModel.settingsDevice.collectAsState()
     val activatingDevice by viewModel.activatingDevice.collectAsState()
     val rtspDevice by viewModel.rtspDevice.collectAsState()
     val diagnosticDevice by viewModel.diagnosticDevice.collectAsState()
     val wanPortDevice by viewModel.wanPortDevice.collectAsState()
     val rebootingDevice by viewModel.rebootingDevice.collectAsState()
     val userMessage by viewModel.userMessage.collectAsState()
+    val conflictingIps by viewModel.conflictingIps.collectAsState()
+    val siteProjects by viewModel.siteProjects.collectAsState()
+
+    var defaultUser by remember { mutableStateOf("admin") }
+    var defaultPassword by remember { mutableStateOf("admin123") }
 
     var showWanDialogDirect by remember { mutableStateOf(false) }
     var showNetworkCard by remember { mutableStateOf(false) }
     var showSearchBar by remember { mutableStateOf(false) }
     var showAuthorDialog by remember { mutableStateOf(false) }
+    var showBatchDialog by remember { mutableStateOf(false) }
+    var showHandoverDialog by remember { mutableStateOf(false) }
+    var showSiteProjectsDialog by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -196,9 +205,6 @@ fun ScannerScreen(
                 .padding(paddingValues)
         ) {
             // ConfigTool Mobile style: Credentials input row (Compact, non-clipped BasicTextField)
-            var defaultUser by remember { mutableStateOf("admin") }
-            var defaultPassword by remember { mutableStateOf("admin123") }
-
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -221,6 +227,122 @@ fun ScannerScreen(
                     isPassword = true,
                     modifier = Modifier.weight(1f)
                 )
+            }
+
+            // Technician Quick Action Toolbar
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Surface(
+                    onClick = { showBatchDialog = true },
+                    shape = RoundedCornerShape(7.dp),
+                    color = Color(0xFF0284C7).copy(alpha = 0.12f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF0284C7).copy(alpha = 0.55f)),
+                    modifier = Modifier.weight(1f).height(30.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(Icons.Default.FlashOn, contentDescription = null, tint = Color(0xFF0284C7), modifier = Modifier.size(13.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("Đổi IP loạt", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0284C7), maxLines = 1)
+                    }
+                }
+
+                Surface(
+                    onClick = { showHandoverDialog = true },
+                    shape = RoundedCornerShape(7.dp),
+                    color = Color(0xFF10B981).copy(alpha = 0.12f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.55f)),
+                    modifier = Modifier.weight(1f).height(30.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(Icons.Default.Description, contentDescription = null, tint = Color(0xFF059669), modifier = Modifier.size(13.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("Biên bản giao", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF059669), maxLines = 1)
+                    }
+                }
+
+                Surface(
+                    onClick = { showSiteProjectsDialog = true },
+                    shape = RoundedCornerShape(7.dp),
+                    color = Color(0xFF8B5CF6).copy(alpha = 0.12f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF8B5CF6).copy(alpha = 0.55f)),
+                    modifier = Modifier.weight(1f).height(30.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(Icons.Default.FolderSpecial, contentDescription = null, tint = Color(0xFF7C3AED), modifier = Modifier.size(13.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text("Dự án (${siteProjects.size})", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF7C3AED), maxLines = 1)
+                    }
+                }
+            }
+
+            // IP Conflict Warning Alert Banner
+            AnimatedVisibility(visible = conflictingIps.isNotEmpty()) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 2.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFFEF4444).copy(alpha = 0.12f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEF4444))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = Color(0xFFDC2626),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Column {
+                                Text(
+                                    text = "Xung đột IP: ${conflictingIps.joinToString(", ")}",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFDC2626)
+                                )
+                                Text(
+                                    text = "Trùng địa chỉ IP khiến camera chập chờn!",
+                                    fontSize = 9.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        FilledTonalButton(
+                            onClick = { showBatchDialog = true },
+                            colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFFDC2626), contentColor = Color.White),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            modifier = Modifier.height(26.dp)
+                        ) {
+                            Text("Sửa ngay", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
             }
 
             // Compact 1-line Network & WAN Bar with Toggle Button (Saves massive screen space!)
@@ -698,12 +820,15 @@ fun ScannerScreen(
                             device = device,
                             phoneIp = wifiInfo.ipAddress,
                             phoneMask = wifiInfo.subnetMask,
+                            isIpConflict = conflictingIps.contains(device.ipv4Address),
                             onConfigureClick = { viewModel.openConfigDialog(device) },
+                            onSettingsClick = { viewModel.openSettingsDialog(device) },
                             onActivateClick = { viewModel.openActivationDialog(device) },
                             onRtspClick = { viewModel.openRtspDialog(device) },
                             onDiagnosticClick = { viewModel.openDiagnosticDialog(device) },
                             onWanPortClick = { viewModel.openWanPortDialog(device) },
-                            onRebootClick = { viewModel.openRebootDialog(device) }
+                            onRebootClick = { viewModel.openRebootDialog(device) },
+                            onTimeSyncClick = { viewModel.syncDeviceTime(device, defaultPassword) }
                         )
                     }
                 }
@@ -775,6 +900,55 @@ fun ScannerScreen(
     // Author & Ownership Dialog
     if (showAuthorDialog) {
         AuthorInfoDialog(onDismiss = { showAuthorDialog = false })
+    }
+
+    // Camera Settings Dialog (Image, WDR/BLC/HLC, Day/Night, Resolution, Codec, NTP, Live Sync)
+    settingsDevice?.let { dev ->
+        CameraSettingsDialog(
+            device = dev,
+            defaultUser = defaultUser,
+            defaultPass = defaultPassword,
+            onDismiss = { viewModel.closeSettingsDialog() }
+        )
+    }
+
+    // Batch IP Configuration Dialog
+    if (showBatchDialog) {
+        BatchConfigDialog(
+            devices = devices,
+            phoneGateway = wifiInfo.gateway,
+            phoneSubnetMask = wifiInfo.subnetMask,
+            suggestedFreeStartIp = viewModel.getSuggestedFreeStartIp(),
+            defaultPassword = defaultPassword,
+            onDismiss = { showBatchDialog = false },
+            onApplyBatch = { payloads ->
+                viewModel.applyBatchNetworkConfig(payloads)
+                showBatchDialog = false
+            }
+        )
+    }
+
+    // Handover Report Dialog (Print / PDF / Save site)
+    if (showHandoverDialog) {
+        HandoverReportDialog(
+            devices = devices,
+            wanIp = wanInfo?.ip ?: "",
+            wifiSsid = wifiInfo.ssid,
+            onDismiss = { showHandoverDialog = false },
+            onSaveProject = { project ->
+                viewModel.saveSiteProject(project)
+                showHandoverDialog = false
+            }
+        )
+    }
+
+    // Site Projects Archive Dialog
+    if (showSiteProjectsDialog) {
+        SiteProjectsDialog(
+            projects = siteProjects,
+            onDismiss = { showSiteProjectsDialog = false },
+            onDeleteProject = { id -> viewModel.deleteSiteProject(id) }
+        )
     }
 }
 
