@@ -2,6 +2,7 @@ package com.scanipcamera.app.ui.screens
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -9,6 +10,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -17,8 +19,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.scanipcamera.app.data.model.DeviceBrand
@@ -53,6 +58,8 @@ fun ScannerScreen(
 
     var showWanDialogDirect by remember { mutableStateOf(false) }
     var showNetworkCard by remember { mutableStateOf(false) }
+    var showSearchBar by remember { mutableStateOf(false) }
+    var showAuthorDialog by remember { mutableStateOf(false) }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -73,17 +80,28 @@ fun ScannerScreen(
                         Text(
                             text = "Scan IP Camera & NVR",
                             fontWeight = FontWeight.Bold,
-                            fontSize = 18.sp
+                            fontSize = 17.sp
                         )
                         Text(
                             text = "SADP, Dahua & Port Forwarding Tool",
-                            fontSize = 12.sp,
+                            fontSize = 11.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 },
                 actions = {
-                    // Toggle Network (Wi-Fi + WAN) Banner
+                    // 1. Toggle Search Bar
+                    IconButton(
+                        onClick = { showSearchBar = !showSearchBar }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Bật/Tắt tìm kiếm",
+                            tint = if (showSearchBar || searchQuery.isNotEmpty()) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+
+                    // 2. Toggle Network (Wi-Fi + WAN) Banner
                     IconButton(
                         onClick = { showNetworkCard = !showNetworkCard }
                     ) {
@@ -93,7 +111,19 @@ fun ScannerScreen(
                             tint = if (showNetworkCard) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
-                    // Export / Share Report button
+
+                    // 3. Author & Ownership Info (Verified Badge)
+                    IconButton(
+                        onClick = { showAuthorDialog = true }
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.VerifiedUser,
+                            contentDescription = "Thông tin tác giả & Hỗ trợ",
+                            tint = Color(0xFF0284C7)
+                        )
+                    }
+
+                    // 4. Export / Share Report button
                     IconButton(
                         onClick = { viewModel.exportDeviceReport() },
                         enabled = devices.isNotEmpty()
@@ -101,7 +131,7 @@ fun ScannerScreen(
                         Icon(imageVector = Icons.Default.Share, contentDescription = "Xuất báo cáo")
                     }
 
-                    // Refresh button
+                    // 5. Refresh button
                     IconButton(
                         onClick = { viewModel.startScanning() },
                         enabled = !isScanning
@@ -165,48 +195,39 @@ fun ScannerScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            // ConfigTool Mobile style: Credentials input row
+            // ConfigTool Mobile style: Credentials input row (Compact, non-clipped BasicTextField)
             var defaultUser by remember { mutableStateOf("admin") }
             var defaultPassword by remember { mutableStateOf("admin123") }
 
-            Card(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 2.dp),
-                shape = RoundedCornerShape(8.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+                    .padding(horizontal = 10.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 10.dp, vertical = 4.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedTextField(
-                        value = defaultUser,
-                        onValueChange = { defaultUser = it },
-                        placeholder = { Text("Tài khoản", fontSize = 11.sp) },
-                        leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(15.dp)) },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f).height(44.dp)
-                    )
-                    OutlinedTextField(
-                        value = defaultPassword,
-                        onValueChange = { defaultPassword = it },
-                        placeholder = { Text("Mật khẩu", fontSize = 11.sp) },
-                        leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(15.dp)) },
-                        singleLine = true,
-                        modifier = Modifier.weight(1f).height(44.dp)
-                    )
-                }
+                CompactCredentialField(
+                    value = defaultUser,
+                    onValueChange = { defaultUser = it },
+                    placeholder = "Tài khoản",
+                    leadingIcon = Icons.Default.Person,
+                    modifier = Modifier.weight(1f)
+                )
+                CompactCredentialField(
+                    value = defaultPassword,
+                    onValueChange = { defaultPassword = it },
+                    placeholder = "Mật khẩu",
+                    leadingIcon = Icons.Default.Lock,
+                    isPassword = true,
+                    modifier = Modifier.weight(1f)
+                )
             }
 
             // Compact 1-line Network & WAN Bar with Toggle Button (Saves massive screen space!)
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 3.dp),
+                    .padding(horizontal = 10.dp, vertical = 2.dp),
                 shape = RoundedCornerShape(8.dp),
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
                 onClick = { showNetworkCard = !showNetworkCard }
@@ -362,44 +383,90 @@ fun ScannerScreen(
                 }
             }
 
-            // Scan Mode Selector Chips
+            // Scan Mode Selector (Compact 28dp segmented buttons)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    .padding(horizontal = 10.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                FilterChip(
-                    selected = scanMode == ScanMode.UDP_DISCOVERY,
+                Surface(
                     onClick = { viewModel.setScanMode(ScanMode.UDP_DISCOVERY) },
-                    label = { Text("Đa giao thức (SADP/Dahua/ONVIF)", fontSize = 11.sp) },
-                    leadingIcon = {
-                        Icon(Icons.Default.Sensors, contentDescription = null, modifier = Modifier.size(14.dp))
+                    shape = RoundedCornerShape(6.dp),
+                    color = if (scanMode == ScanMode.UDP_DISCOVERY) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (scanMode == ScanMode.UDP_DISCOVERY) MaterialTheme.colorScheme.primary else Color.Transparent
+                    ),
+                    modifier = Modifier.weight(1f).height(28.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            Icons.Default.Sensors,
+                            contentDescription = null,
+                            modifier = Modifier.size(13.dp),
+                            tint = if (scanMode == ScanMode.UDP_DISCOVERY) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            "Đa giao thức (SADP/Dahua/ONVIF)",
+                            fontSize = 10.sp,
+                            fontWeight = if (scanMode == ScanMode.UDP_DISCOVERY) FontWeight.Bold else FontWeight.Normal,
+                            color = if (scanMode == ScanMode.UDP_DISCOVERY) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
+                        )
                     }
-                )
+                }
 
-                FilterChip(
-                    selected = scanMode == ScanMode.SUBNET_PING,
+                Surface(
                     onClick = { viewModel.setScanMode(ScanMode.SUBNET_PING) },
-                    label = { Text("Quét dải IP (1..254)", fontSize = 11.sp) },
-                    leadingIcon = {
-                        Icon(Icons.Default.Lan, contentDescription = null, modifier = Modifier.size(14.dp))
+                    shape = RoundedCornerShape(6.dp),
+                    color = if (scanMode == ScanMode.SUBNET_PING) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    border = androidx.compose.foundation.BorderStroke(
+                        1.dp,
+                        if (scanMode == ScanMode.SUBNET_PING) MaterialTheme.colorScheme.primary else Color.Transparent
+                    ),
+                    modifier = Modifier.weight(1f).height(28.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            Icons.Default.Lan,
+                            contentDescription = null,
+                            modifier = Modifier.size(13.dp),
+                            tint = if (scanMode == ScanMode.SUBNET_PING) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            "Quét dải IP (1..254)",
+                            fontSize = 10.sp,
+                            fontWeight = if (scanMode == ScanMode.SUBNET_PING) FontWeight.Bold else FontWeight.Normal,
+                            color = if (scanMode == ScanMode.SUBNET_PING) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1
+                        )
                     }
-                )
+                }
             }
 
             // Progress indicator
             AnimatedVisibility(visible = isScanning) {
                 if (scanMode == ScanMode.SUBNET_PING && scanProgress != null) {
                     val progressFloat = scanProgress!!.first.toFloat() / scanProgress!!.second.toFloat()
-                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 2.dp)) {
+                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp)) {
                         LinearProgressIndicator(
                             progress = { progressFloat },
                             modifier = Modifier.fillMaxWidth()
                         )
                         Text(
                             text = "Tiến độ quét IP: ${scanProgress!!.first}/${scanProgress!!.second} hosts (${(progressFloat * 100).toInt()}%)",
-                            fontSize = 11.sp,
+                            fontSize = 10.5.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -408,40 +475,70 @@ fun ScannerScreen(
                 }
             }
 
-            // Search Bar
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { viewModel.setSearchQuery(it) },
-                placeholder = { Text("Tìm theo IP, MAC, Model, Đầu ghi NVR...", fontSize = 13.sp) },
-                leadingIcon = {
-                    Icon(imageVector = Icons.Default.Search, contentDescription = null, modifier = Modifier.size(18.dp))
-                },
-                trailingIcon = {
-                    if (searchQuery.isNotEmpty()) {
-                        IconButton(onClick = { viewModel.setSearchQuery("") }) {
-                            Icon(imageVector = Icons.Default.Close, contentDescription = "Xóa", modifier = Modifier.size(16.dp))
+            // Search Bar (Toggleable to save maximum vertical space)
+            AnimatedVisibility(visible = showSearchBar || searchQuery.isNotEmpty()) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 2.dp)
+                        .height(36.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Search, contentDescription = null, modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.primary)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                            if (searchQuery.isEmpty()) {
+                                Text("Tìm theo IP, MAC, Model, Serial...", fontSize = 11.5.sp, color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f))
+                            }
+                            BasicTextField(
+                                value = searchQuery,
+                                onValueChange = { viewModel.setSearchQuery(it) },
+                                singleLine = true,
+                                textStyle = androidx.compose.ui.text.TextStyle(
+                                    fontSize = 12.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                ),
+                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                        if (searchQuery.isNotEmpty()) {
+                            IconButton(onClick = { viewModel.setSearchQuery("") }, modifier = Modifier.size(24.dp)) {
+                                Icon(Icons.Default.Close, contentDescription = "Xóa", modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                        IconButton(
+                            onClick = {
+                                showSearchBar = false
+                                viewModel.setSearchQuery("")
+                            },
+                            modifier = Modifier.size(24.dp)
+                        ) {
+                            Icon(Icons.Default.KeyboardArrowUp, contentDescription = "Ẩn tìm kiếm", modifier = Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
-                },
-                singleLine = true,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 4.dp),
-                shape = RoundedCornerShape(10.dp)
-            )
+                }
+            }
 
             // Category Filter Chips (Camera vs NVR vs DVR)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 14.dp, vertical = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    .padding(horizontal = 10.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
                 FilterChip(
                     selected = selectedCategoryFilter == null,
                     onClick = { viewModel.setCategoryFilter(null) },
-                    label = { Text("Tất cả (${devices.size})", fontSize = 11.sp) }
+                    label = { Text("Tất cả (${devices.size})", fontSize = 10.5.sp) },
+                    modifier = Modifier.height(28.dp)
                 )
                 FilterChip(
                     selected = selectedCategoryFilter == DeviceCategory.CAMERA,
@@ -449,9 +546,10 @@ fun ScannerScreen(
                         viewModel.setCategoryFilter(if (selectedCategoryFilter == DeviceCategory.CAMERA) null else DeviceCategory.CAMERA)
                     },
                     leadingIcon = {
-                        Icon(Icons.Default.Videocam, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Icon(Icons.Default.Videocam, contentDescription = null, modifier = Modifier.size(13.dp))
                     },
-                    label = { Text("Camera IP", fontSize = 11.sp) }
+                    label = { Text("Camera IP", fontSize = 10.5.sp) },
+                    modifier = Modifier.height(28.dp)
                 )
                 FilterChip(
                     selected = selectedCategoryFilter == DeviceCategory.NVR,
@@ -459,9 +557,10 @@ fun ScannerScreen(
                         viewModel.setCategoryFilter(if (selectedCategoryFilter == DeviceCategory.NVR) null else DeviceCategory.NVR)
                     },
                     leadingIcon = {
-                        Icon(Icons.Default.Storage, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Icon(Icons.Default.Storage, contentDescription = null, modifier = Modifier.size(13.dp))
                     },
-                    label = { Text("Đầu ghi NVR", fontSize = 11.sp) }
+                    label = { Text("Đầu ghi NVR", fontSize = 10.5.sp) },
+                    modifier = Modifier.height(28.dp)
                 )
                 FilterChip(
                     selected = selectedCategoryFilter == DeviceCategory.DVR,
@@ -469,27 +568,33 @@ fun ScannerScreen(
                         viewModel.setCategoryFilter(if (selectedCategoryFilter == DeviceCategory.DVR) null else DeviceCategory.DVR)
                     },
                     leadingIcon = {
-                        Icon(Icons.Default.Dns, contentDescription = null, modifier = Modifier.size(14.dp))
+                        Icon(Icons.Default.Dns, contentDescription = null, modifier = Modifier.size(13.dp))
                     },
-                    label = { Text("Đầu ghi DVR / XVR", fontSize = 11.sp) }
+                    label = { Text("Đầu ghi DVR / XVR", fontSize = 10.5.sp) },
+                    modifier = Modifier.height(28.dp)
                 )
             }
 
-            // Brand Filter Chips
+            // Brand Filter Chips (Filtered: Excluded Xiongmai and Unknown as requested!)
+            val visibleBrands = remember {
+                DeviceBrand.entries.filter { it != DeviceBrand.XIONGMAI && it != DeviceBrand.UNKNOWN }
+            }
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 14.dp, vertical = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    .padding(horizontal = 10.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
                 FilterChip(
                     selected = selectedBrandFilter == null,
                     onClick = { viewModel.setBrandFilter(null) },
-                    label = { Text("Tất cả hãng", fontSize = 11.sp) }
+                    label = { Text("Tất cả hãng", fontSize = 10.5.sp) },
+                    modifier = Modifier.height(28.dp)
                 )
 
-                DeviceBrand.entries.forEach { brand ->
+                visibleBrands.forEach { brand ->
                     FilterChip(
                         selected = selectedBrandFilter == brand,
                         onClick = {
@@ -500,12 +605,42 @@ fun ScannerScreen(
                         leadingIcon = {
                             Box(
                                 modifier = Modifier
-                                    .size(8.dp)
-                                    .clip(androidx.compose.foundation.shape.CircleShape)
+                                    .size(7.dp)
+                                    .clip(CircleShape)
                                     .background(brand.badgeColor)
                             )
                         },
-                        label = { Text(brand.displayName, fontSize = 11.sp) }
+                        label = { Text(brand.displayName, fontSize = 10.5.sp) },
+                        modifier = Modifier.height(28.dp)
+                    )
+                }
+            }
+
+            // Author / Owner Quick Contact Bar
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 1.dp)
+                    .clickable { showAuthorDialog = true },
+                color = Color.Transparent
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Verified,
+                        contentDescription = null,
+                        tint = Color(0xFF0284C7),
+                        modifier = Modifier.size(12.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "Bản quyền: toanhangts@gmail.com • Hotline/Zalo: 0965.620.086",
+                        fontSize = 10.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f),
+                        fontWeight = FontWeight.Medium
                     )
                 }
             }
@@ -555,8 +690,8 @@ fun ScannerScreen(
             } else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(start = 14.dp, end = 14.dp, top = 6.dp, bottom = 88.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 2.dp, bottom = 84.dp),
+                    verticalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
                     items(devices, key = { it.id }) { device ->
                         DeviceCard(
@@ -635,5 +770,85 @@ fun ScannerScreen(
             onDismiss = { viewModel.closeRebootDialog() },
             onConfirmReboot = { password -> viewModel.rebootDevice(device, password) }
         )
+    }
+
+    // Author & Ownership Dialog
+    if (showAuthorDialog) {
+        AuthorInfoDialog(onDismiss = { showAuthorDialog = false })
+    }
+}
+
+@Composable
+private fun CompactCredentialField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    leadingIcon: androidx.compose.ui.graphics.vector.ImageVector,
+    isPassword: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    var passwordVisible by remember { mutableStateOf(!isPassword) }
+
+    Surface(
+        modifier = modifier.height(34.dp),
+        shape = RoundedCornerShape(6.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f))
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = leadingIcon,
+                contentDescription = null,
+                modifier = Modifier.size(14.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Box(
+                modifier = Modifier.weight(1f),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                if (value.isEmpty()) {
+                    Text(
+                        text = placeholder,
+                        fontSize = 11.5.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
+                }
+                BasicTextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    singleLine = true,
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontFamily = FontFamily.Monospace
+                    ),
+                    visualTransformation = if (!passwordVisible)
+                        PasswordVisualTransformation()
+                    else VisualTransformation.None,
+                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            if (isPassword && value.isNotEmpty()) {
+                IconButton(
+                    onClick = { passwordVisible = !passwordVisible },
+                    modifier = Modifier.size(22.dp)
+                ) {
+                    Icon(
+                        imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                        contentDescription = null,
+                        modifier = Modifier.size(13.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
     }
 }

@@ -59,10 +59,10 @@ fun DeviceCard(
 
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(10.dp),
+        shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.35f))
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
     ) {
         Row(
             modifier = Modifier
@@ -70,10 +70,10 @@ fun DeviceCard(
                 .height(IntrinsicSize.Min),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Left block: ConfigTool Mobile style (Model on top, Ports on bottom)
+            // Left block: Compact ConfigTool Mobile style (Model on top, Ports on bottom)
             Column(
                 modifier = Modifier
-                    .width(84.dp)
+                    .width(66.dp)
                     .fillMaxHeight(),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
@@ -83,18 +83,17 @@ fun DeviceCard(
                         .fillMaxWidth()
                         .weight(1f)
                         .background(badgeTopColor)
-                        .padding(horizontal = 4.dp, vertical = 6.dp),
+                        .padding(horizontal = 2.dp, vertical = 2.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
                         text = device.model.ifEmpty { device.brand.displayName },
                         color = Color.White,
-                        fontWeight = FontWeight.ExtraBold,
-                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 9.sp,
                         textAlign = TextAlign.Center,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        lineHeight = 13.sp
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
@@ -103,33 +102,29 @@ fun DeviceCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(badgeBottomColor)
-                        .padding(vertical = 4.dp),
+                        .padding(vertical = 1.5.dp),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = "${device.httpPort}",
+                        text = "${device.httpPort} / ${device.sdkPort}",
                         color = Color.White,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Text(
-                        text = "${device.sdkPort}",
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace
+                        fontSize = 8.sp,
+                        fontFamily = FontFamily.Monospace,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1
                     )
                 }
             }
 
-            // Center block: IP Address, MAC, S/N, and Badges
+            // Center block: IP Address, MAC, S/N, and Badges (Compact 3 rows)
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(horizontal = 10.dp, vertical = 8.dp)
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+                verticalArrangement = Arrangement.Center
             ) {
-                // Row 1: Big Bold IP & Status Badges
+                // Row 1: IP & Badges
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.fillMaxWidth()
@@ -137,7 +132,7 @@ fun DeviceCard(
                     Text(
                         text = device.ipv4Address,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp,
+                        fontSize = 13.5.sp,
                         fontFamily = FontFamily.Monospace,
                         color = MaterialTheme.colorScheme.onSurface
                     )
@@ -146,14 +141,14 @@ fun DeviceCard(
                         Spacer(modifier = Modifier.width(4.dp))
                         Surface(
                             color = Color(0xFF0284C7).copy(alpha = 0.15f),
-                            shape = RoundedCornerShape(4.dp)
+                            shape = RoundedCornerShape(3.dp)
                         ) {
                             Text(
                                 text = "${device.channelCount} CH",
                                 color = Color(0xFF0284C7),
-                                fontSize = 9.sp,
+                                fontSize = 8.5.sp,
                                 fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.5.dp)
                             )
                         }
                     }
@@ -162,14 +157,14 @@ fun DeviceCard(
                         Spacer(modifier = Modifier.width(4.dp))
                         Surface(
                             color = SubnetMismatchColor.copy(alpha = 0.15f),
-                            shape = RoundedCornerShape(4.dp)
+                            shape = RoundedCornerShape(3.dp)
                         ) {
                             Text(
                                 text = "Lệch IP",
                                 color = SubnetMismatchColor,
-                                fontSize = 9.sp,
+                                fontSize = 8.5.sp,
                                 fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.5.dp)
                             )
                         }
                     }
@@ -178,22 +173,20 @@ fun DeviceCard(
                         Spacer(modifier = Modifier.width(4.dp))
                         Surface(
                             color = StatusInactive.copy(alpha = 0.15f),
-                            shape = RoundedCornerShape(4.dp)
+                            shape = RoundedCornerShape(3.dp)
                         ) {
                             Text(
                                 text = "Chưa kích hoạt",
                                 color = StatusInactive,
-                                fontSize = 9.sp,
+                                fontSize = 8.5.sp,
                                 fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                                modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.5.dp)
                             )
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(3.dp))
-
-                // Row 2: MAC Address (Interactive click to copy)
+                // Row 2: MAC Address
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.clickable {
@@ -208,16 +201,14 @@ fun DeviceCard(
                 ) {
                     Text(
                         text = "MAC: ${device.macAddress.ifEmpty { "Chưa có MAC" }}",
-                        fontSize = 11.sp,
+                        fontSize = 10.sp,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
-                Spacer(modifier = Modifier.height(2.dp))
-
-                // Row 3: Serial Number (Highlighted in bright cyan/blue, interactive click to copy)
+                // Row 3: Serial Number (Highlighted in bright cyan)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.clickable {
@@ -232,7 +223,7 @@ fun DeviceCard(
                 ) {
                     Text(
                         text = "S/N: ${device.serialNumber.ifEmpty { "N/A" }}",
-                        fontSize = 11.sp,
+                        fontSize = 10.sp,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF0284C7)
@@ -240,17 +231,17 @@ fun DeviceCard(
                 }
             }
 
-            // Right block: 2x2 Circular action buttons with distinctive semantic colors
+            // Right block: 2x2 Circular action buttons (24dp size, ultra space-efficient)
             Column(
-                modifier = Modifier.padding(end = 8.dp, top = 6.dp, bottom = 6.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                modifier = Modifier.padding(end = 6.dp, top = 2.dp, bottom = 2.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp)
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                     // 1. Edit IP (Pencil)
                     IconButton(
                         onClick = onConfigureClick,
                         modifier = Modifier
-                            .size(32.dp)
+                            .size(24.dp)
                             .clip(CircleShape)
                             .background(Color(0xFF0284C7))
                     ) {
@@ -258,7 +249,7 @@ fun DeviceCard(
                             imageVector = Icons.Default.Edit,
                             contentDescription = "Đổi IP",
                             tint = Color.White,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(12.dp)
                         )
                     }
 
@@ -266,7 +257,7 @@ fun DeviceCard(
                     IconButton(
                         onClick = onWanPortClick,
                         modifier = Modifier
-                            .size(32.dp)
+                            .size(24.dp)
                             .clip(CircleShape)
                             .background(Color(0xFF0D9488))
                     ) {
@@ -274,18 +265,18 @@ fun DeviceCard(
                             imageVector = Icons.Default.Settings,
                             contentDescription = "Test Port WAN / Cài đặt",
                             tint = Color.White,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(12.dp)
                         )
                     }
                 }
 
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(3.dp)) {
                     // 3. Info / Details & Diagnostics (Info icon)
                     Box {
                         IconButton(
                             onClick = { showMenu = true },
                             modifier = Modifier
-                                .size(32.dp)
+                                .size(24.dp)
                                 .clip(CircleShape)
                                 .background(Color(0xFF475569))
                         ) {
@@ -293,7 +284,7 @@ fun DeviceCard(
                                 imageVector = Icons.Default.Info,
                                 contentDescription = "Menu chức năng",
                                 tint = Color.White,
-                                modifier = Modifier.size(16.dp)
+                                modifier = Modifier.size(12.dp)
                             )
                         }
 
@@ -302,48 +293,48 @@ fun DeviceCard(
                             onDismissRequest = { showMenu = false }
                         ) {
                             DropdownMenuItem(
-                                text = { Text("Đường dẫn luồng RTSP") },
+                                text = { Text("Đường dẫn luồng RTSP", fontSize = 13.sp) },
                                 onClick = {
                                     showMenu = false
                                     onRtspClick()
                                 },
                                 leadingIcon = {
-                                    Icon(Icons.Default.Videocam, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Default.Videocam, contentDescription = null, modifier = Modifier.size(16.dp))
                                 }
                             )
 
                             DropdownMenuItem(
-                                text = { Text("Kiểm tra Ping & Port nội bộ") },
+                                text = { Text("Kiểm tra Ping & Port nội bộ", fontSize = 13.sp) },
                                 onClick = {
                                     showMenu = false
                                     onDiagnosticClick()
                                 },
                                 leadingIcon = {
-                                    Icon(Icons.Default.NetworkCheck, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Default.NetworkCheck, contentDescription = null, modifier = Modifier.size(16.dp))
                                 }
                             )
 
                             if (!device.isActivated) {
                                 DropdownMenuItem(
-                                    text = { Text("Kích hoạt thiết bị") },
+                                    text = { Text("Kích hoạt thiết bị", fontSize = 13.sp) },
                                     onClick = {
                                         showMenu = false
                                         onActivateClick()
                                     },
                                     leadingIcon = {
-                                        Icon(Icons.Default.LockOpen, contentDescription = null, modifier = Modifier.size(18.dp))
+                                        Icon(Icons.Default.LockOpen, contentDescription = null, modifier = Modifier.size(16.dp))
                                     }
                                 )
                             }
 
                             DropdownMenuItem(
-                                text = { Text("Khởi động lại (Reboot)") },
+                                text = { Text("Khởi động lại (Reboot)", fontSize = 13.sp) },
                                 onClick = {
                                     showMenu = false
                                     onRebootClick()
                                 },
                                 leadingIcon = {
-                                    Icon(Icons.Default.RestartAlt, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Icon(Icons.Default.RestartAlt, contentDescription = null, modifier = Modifier.size(16.dp))
                                 }
                             )
                         }
@@ -357,7 +348,7 @@ fun DeviceCard(
                             context.startActivity(intent)
                         },
                         modifier = Modifier
-                            .size(32.dp)
+                            .size(24.dp)
                             .clip(CircleShape)
                             .background(Color(0xFF2563EB))
                     ) {
@@ -365,7 +356,7 @@ fun DeviceCard(
                             imageVector = Icons.Default.Language,
                             contentDescription = "Mở Web",
                             tint = Color.White,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(12.dp)
                         )
                     }
                 }
