@@ -130,4 +130,43 @@ class HikvisionConfigurator {
             socket?.close()
         }
     }
+
+    /**
+     * Send remote reboot packet to Hikvision camera.
+     */
+    suspend fun rebootDevice(
+        device: CameraDevice,
+        adminPassword: String
+    ): Result<String> = withContext(Dispatchers.IO) {
+        var socket: DatagramSocket? = null
+        try {
+            socket = DatagramSocket().apply {
+                broadcast = true
+                soTimeout = 2500
+            }
+
+            val uuid = UUID.randomUUID().toString()
+            val rebootXml = """
+                <?xml version="1.0" encoding="utf-8"?>
+                <Probe>
+                    <Uuid>$uuid</Uuid>
+                    <Types>reboot</Types>
+                    <MAC>${device.macAddress.lowercase()}</MAC>
+                    <Password>$adminPassword</Password>
+                </Probe>
+            """.trimIndent()
+
+            val packetBytes = rebootXml.toByteArray(Charsets.UTF_8)
+            val targetAddr = InetAddress.getByName(if (device.ipv4Address.isNotBlank()) device.ipv4Address else "255.255.255.255")
+            val packet = DatagramPacket(packetBytes, packetBytes.size, targetAddr, HikvisionSADPScanner.SADP_PORT)
+            socket.send(packet)
+
+            Result.success("Đã gửi lệnh khởi động lại thiết bị Hikvision.")
+        } catch (e: Exception) {
+            Log.e(TAG, "Hikvision reboot failed", e)
+            Result.failure(e)
+        } finally {
+            socket?.close()
+        }
+    }
 }

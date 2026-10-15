@@ -5,15 +5,14 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.scanipcamera.app.data.config.DahuaConfigurator
 import com.scanipcamera.app.data.config.HikvisionConfigurator
+import com.scanipcamera.app.data.export.DeviceExportHelper
 import com.scanipcamera.app.data.model.CameraDevice
 import com.scanipcamera.app.data.model.DeviceBrand
 import com.scanipcamera.app.data.model.NetworkConfigPayload
+import com.scanipcamera.app.data.network.WifiNetworkInfo
 import com.scanipcamera.app.data.scanner.DeviceScannerManager
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.stateIn
+import com.scanipcamera.app.data.scanner.ScanMode
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 class ScannerViewModel(application: Application) : AndroidViewModel(application) {
@@ -28,17 +27,45 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
         false
     )
 
+    val scanProgress = scannerManager.scanProgress.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        null
+    )
+
+    val wifiInfo: StateFlow<WifiNetworkInfo> = scannerManager.wifiInfo.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5000),
+        WifiNetworkInfo()
+    )
+
     private val _selectedBrandFilter = MutableStateFlow<DeviceBrand?>(null)
     val selectedBrandFilter: StateFlow<DeviceBrand?> = _selectedBrandFilter
 
+    private val _searchQuery = MutableStateFlow("")
+    val searchQuery: StateFlow<String> = _searchQuery
+
+    private val _scanMode = MutableStateFlow(ScanMode.UDP_DISCOVERY)
+    val scanMode: StateFlow<ScanMode> = _scanMode
+
+    // Filter devices based on brand and search query
     val devices: StateFlow<List<CameraDevice>> = combine(
         scannerManager.devices,
-        _selectedBrandFilter
-    ) { deviceList, filter ->
-        if (filter == null) {
-            deviceList
-        } else {
-            deviceList.filter { it.brand == filter }
+        _selectedBrandFilter,
+        _searchQuery
+    ) { deviceList, brandFilter, query ->
+        val trimmed = query.trim().lowercase()
+        deviceList.filter { device ->
+            val matchBrand = (brandFilter == null || device.brand == brandFilter)
+            val matchQuery = if (trimmed.isEmpty()) {
+                true
+            } else {
+                device.ipv4Address.contains(trimmed) ||
+                        device.macAddress.lowercase().contains(trimmed) ||
+                        device.model.lowercase().contains(trimmed) ||
+                        device.serialNumber.lowercase().contains(trimmed)
+            }
+            matchBrand && matchQuery
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -49,17 +76,46 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
     private val _activatingDevice = MutableStateFlow<CameraDevice?>(null)
     val activatingDevice: StateFlow<CameraDevice?> = _activatingDevice
 
+    private val _rtspDevice = MutableStateFlow<CameraDevice?>(null)
+    val rtspDevice: StateFlow<CameraDevice?> = _rtspDevice
+
+    private val _diagnosticDevice = MutableStateFlow<CameraDevice?>(null)
+    val diagnosticDevice: StateFlow<CameraDevice?> = _diagnosticDevice
+
+    private val _rebootingDevice = MutableStateFlow<CameraDevice?>(null)
+    val rebootingDevice: StateFlow<CameraDevice?> = _rebootingDevice
+
     private val _userMessage = MutableStateFlow<String?>(null)
     val userMessage: StateFlow<String?> = _userMessage
 
+    init {
+        scannerManager.refreshWifiInfo()
+    }
+
     fun startScanning() {
         viewModelScope.launch {
-            scannerManager.startScan()
+            if (_scanMode.value == ScanMode.UDP_DISCOVERY) {
+                scannerManager.startScan()
+            } else {
+                scannerManager.startSubnetScan()
+            }
         }
+    }
+
+    fun setScanMode(mode: ScanMode) {
+        _scanMode.value = mode
+    }
+
+    fun setSearchQuery(query: String) {
+        _searchQuery.value = query
     }
 
     fun setBrandFilter(brand: DeviceBrand?) {
         _selectedBrandFilter.value = brand
+    }
+
+    fun refreshWifi() {
+        scannerManager.refreshWifiInfo()
     }
 
     fun openConfigDialog(device: CameraDevice) {
@@ -78,6 +134,30 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
         _activatingDevice.value = null
     }
 
+    fun openRtspDialog(device: CameraDevice) {
+        _rtspDevice.value = device
+    }
+
+    fun closeRtspDialog() {
+        _rtspDevice.value = null
+    }
+
+    fun openDiagnosticDialog(device: CameraDevice) {
+        _diagnosticDevice.value = device
+    }
+
+    fun closeDiagnosticDialog() {
+        _diagnosticDevice.value = null
+    }
+
+    fun openRebootDialog(device: CameraDevice) {
+        _rebootingDevice.value = device
+    }
+
+    fun closeRebootDialog() {
+        _rebootingDevice.value = null
+    }
+
     fun clearUserMessage() {
         _userMessage.value = null
     }
@@ -88,11 +168,10 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
                 DeviceBrand.HIKVISION, DeviceBrand.EZVIZ -> {
                     hikvisionConfigurator.configureNetwork(device, payload)
                 }
-                DeviceBrand.DAHUA, DeviceBrand.IMOU -> {
+                DeviceBrand.DAHUA, DeviceBrand.IMOU, DeviceBrand.KBVISION -> {
                     dahuaConfigurator.configureNetwork(device, payload)
                 }
                 else -> {
-                    // Try Hikvision then Dahua
                     val hikRes = hikvisionConfigurator.configureNetwork(device, payload)
                     if (hikRes.isSuccess) hikRes else dahuaConfigurator.configureNetwork(device, payload)
                 }
@@ -101,7 +180,6 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
             result.onSuccess { msg ->
                 _userMessage.value = msg
                 closeConfigDialog()
-                // Refresh list
                 startScanning()
             }.onFailure { err ->
                 _userMessage.value = "Lỗi: ${err.message}"
@@ -111,11 +189,15 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
 
     fun activateDevice(device: CameraDevice, newPassword: String) {
         viewModelScope.launch {
-            val result = hikvisionConfigurator.activateDevice(
-                device.macAddress,
-                device.ipv4Address,
-                newPassword
-            )
+            val result = when (device.brand) {
+                DeviceBrand.DAHUA, DeviceBrand.IMOU, DeviceBrand.KBVISION -> {
+                    dahuaConfigurator.activateDevice(device.macAddress, device.ipv4Address, newPassword)
+                }
+                else -> {
+                    hikvisionConfigurator.activateDevice(device.macAddress, device.ipv4Address, newPassword)
+                }
+            }
+
             result.onSuccess { msg ->
                 _userMessage.value = msg
                 closeActivationDialog()
@@ -124,5 +206,39 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
                 _userMessage.value = "Kích hoạt thất bại: ${err.message}"
             }
         }
+    }
+
+    fun rebootDevice(device: CameraDevice, password: String) {
+        viewModelScope.launch {
+            val result = when (device.brand) {
+                DeviceBrand.DAHUA, DeviceBrand.IMOU, DeviceBrand.KBVISION -> {
+                    dahuaConfigurator.rebootDevice(device, password)
+                }
+                else -> {
+                    hikvisionConfigurator.rebootDevice(device, password)
+                }
+            }
+
+            result.onSuccess { msg ->
+                _userMessage.value = msg
+                closeRebootDialog()
+            }.onFailure { err ->
+                _userMessage.value = "Khởi động lại thất bại: ${err.message}"
+            }
+        }
+    }
+
+    fun exportDeviceReport(asCsv: Boolean = false) {
+        val currentList = devices.value
+        if (currentList.isEmpty()) {
+            _userMessage.value = "Chưa có thiết bị nào để xuất báo cáo!"
+            return
+        }
+        val report = if (asCsv) {
+            DeviceExportHelper.generateCsvReport(currentList)
+        } else {
+            DeviceExportHelper.generateTextReport(currentList)
+        }
+        DeviceExportHelper.shareReport(getApplication(), report)
     }
 }
