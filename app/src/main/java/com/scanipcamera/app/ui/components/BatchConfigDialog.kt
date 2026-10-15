@@ -112,6 +112,7 @@ fun BatchConfigDialog(
                         value = startIp,
                         onValueChange = { startIp = it },
                         label = { Text("IP Bắt đầu", fontSize = 11.sp) },
+                        shape = RoundedCornerShape(10.dp),
                         singleLine = true,
                         textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace, fontSize = 12.5.sp),
                         modifier = Modifier.weight(1.3f)
@@ -120,6 +121,7 @@ fun BatchConfigDialog(
                         value = gateway,
                         onValueChange = { gateway = it },
                         label = { Text("Gateway", fontSize = 11.sp) },
+                        shape = RoundedCornerShape(10.dp),
                         singleLine = true,
                         textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace, fontSize = 12.5.sp),
                         modifier = Modifier.weight(1f)
@@ -136,6 +138,7 @@ fun BatchConfigDialog(
                         value = subnetMask,
                         onValueChange = { subnetMask = it },
                         label = { Text("Subnet Mask", fontSize = 11.sp) },
+                        shape = RoundedCornerShape(10.dp),
                         singleLine = true,
                         textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace, fontSize = 12.5.sp),
                         modifier = Modifier.weight(1.3f)
@@ -144,6 +147,7 @@ fun BatchConfigDialog(
                         value = password,
                         onValueChange = { password = it },
                         label = { Text("Mật khẩu admin", fontSize = 11.sp) },
+                        shape = RoundedCornerShape(10.dp),
                         singleLine = true,
                         textStyle = LocalTextStyle.current.copy(fontFamily = FontFamily.Monospace, fontSize = 12.5.sp),
                         modifier = Modifier.weight(1f)

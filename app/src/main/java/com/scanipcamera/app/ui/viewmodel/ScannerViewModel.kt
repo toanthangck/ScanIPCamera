@@ -327,6 +327,7 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
             result.onSuccess { msg ->
                 _userMessage.value = msg
                 closeConfigDialog()
+                kotlinx.coroutines.delay(1200)
                 startScanning()
             }.onFailure { err ->
                 _userMessage.value = "Lỗi: ${err.message}"
@@ -362,6 +363,7 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
             }
 
             _userMessage.value = "Đổi IP hàng loạt: $successCount thành công, $failCount thất bại"
+            kotlinx.coroutines.delay(1200)
             startScanning()
         }
     }

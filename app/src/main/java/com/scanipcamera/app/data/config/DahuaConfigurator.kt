@@ -12,19 +12,50 @@ import java.net.DatagramSocket
 import java.net.InetAddress
 import java.net.SocketTimeoutException
 
-class DahuaConfigurator {
+class DahuaConfigurator(
+    private val configService: CameraConfigService = CameraConfigService()
+) {
 
     companion object {
         private const val TAG = "DahuaConfigurator"
     }
 
     /**
-     * Send Dahua ConfigTool modify packet to update IP, Subnet, Gateway.
+     * Send Dahua ConfigTool modify packet to update IP, Subnet, Gateway using HTTP CGI & DHIP UDP.
      */
     suspend fun configureNetwork(
         device: CameraDevice,
         payload: NetworkConfigPayload
     ): Result<String> = withContext(Dispatchers.IO) {
+        val effectiveGateway = if (payload.newGateway.isNotBlank()) {
+            payload.newGateway.trim()
+        } else {
+            val parts = payload.newIp.split(".")
+            if (parts.size == 4) "${parts[0]}.${parts[1]}.${parts[2]}.1" else "192.168.1.1"
+        }
+        val safePayload = payload.copy(newGateway = effectiveGateway)
+
+        // 1. Try HTTP CGI directly if current IP is reachable
+        if (device.ipv4Address.isNotBlank()) {
+            val httpResult = configService.configureDahuaNetworkViaHttp(device, safePayload)
+            if (httpResult.isSuccess) {
+                // Send UDP broadcast for cache coherence across tools
+                sendUdpModify(device, safePayload)
+                return@withContext httpResult
+            } else if (httpResult.exceptionOrNull()?.message?.contains("Sai mật khẩu") == true) {
+                return@withContext httpResult
+            }
+        }
+
+        // 2. Send UDP packets on port 37810 (framed DHIP + raw JSON)
+        val udpResult = sendUdpModify(device, safePayload)
+        return@withContext udpResult
+    }
+
+    private fun sendUdpModify(
+        device: CameraDevice,
+        payload: NetworkConfigPayload
+    ): Result<String> {
         var socket: DatagramSocket? = null
         try {
             socket = DatagramSocket().apply {
@@ -32,7 +63,8 @@ class DahuaConfigurator {
                 soTimeout = 2500
             }
 
-            val modifyJson = JSONObject().apply {
+            // Packet 1: client.modify structure
+            val clientModifyJson = JSONObject().apply {
                 put("method", "client.modify")
                 put("params", JSONObject().apply {
                     put("device", JSONObject().apply {
@@ -48,21 +80,41 @@ class DahuaConfigurator {
                 })
             }.toString()
 
-            val packetBytes = modifyJson.toByteArray(Charsets.UTF_8)
-            val targetAddr = InetAddress.getByName(
-                if (device.ipv4Address.isNotBlank()) device.ipv4Address else "255.255.255.255"
-            )
-            val packet = DatagramPacket(packetBytes, packetBytes.size, targetAddr, DahuaDiscoveryScanner.DAHUA_PORT)
-            socket.send(packet)
+            // Packet 2: DHDiscover.modify structure
+            val dhDiscoverModifyJson = JSONObject().apply {
+                put("method", "DHDiscover.modify")
+                put("params", JSONObject().apply {
+                    put("mac", payload.macAddress)
+                    put("ip", payload.newIp)
+                    put("mask", payload.newSubnetMask)
+                    put("gateway", payload.newGateway)
+                    put("dhcp", payload.isDhcp)
+                    put("password", payload.currentPassword)
+                })
+            }.toString()
 
-            // Also broadcast in case of subnet mismatch
-            val broadcastPacket = DatagramPacket(
-                packetBytes,
-                packetBytes.size,
-                InetAddress.getByName("255.255.255.255"),
-                DahuaDiscoveryScanner.DAHUA_PORT
+            val packets = listOf(
+                DahuaDiscoveryScanner.buildDhipPacket(clientModifyJson),
+                DahuaDiscoveryScanner.buildDhipPacket(dhDiscoverModifyJson),
+                clientModifyJson.toByteArray(Charsets.UTF_8)
             )
-            socket.send(broadcastPacket)
+
+            val targets = mutableListOf<InetAddress>()
+            if (device.ipv4Address.isNotBlank()) {
+                try { targets.add(InetAddress.getByName(device.ipv4Address)) } catch (ignored: Exception) {}
+            }
+            try { targets.add(InetAddress.getByName("255.255.255.255")) } catch (ignored: Exception) {}
+
+            for (target in targets) {
+                for (packetBytes in packets) {
+                    try {
+                        val packet = DatagramPacket(packetBytes, packetBytes.size, target, DahuaDiscoveryScanner.DAHUA_PORT)
+                        socket.send(packet)
+                    } catch (e: Exception) {
+                        Log.v(TAG, "Error sending UDP modify packet: ${e.message}")
+                    }
+                }
+            }
 
             val receiveBuffer = ByteArray(2048)
             val receivePacket = DatagramPacket(receiveBuffer, receiveBuffer.size)
@@ -71,16 +123,18 @@ class DahuaConfigurator {
                 socket.receive(receivePacket)
                 val responseStr = String(receivePacket.data, 0, receivePacket.length, Charsets.UTF_8)
                 if (responseStr.contains("\"result\":true") || responseStr.contains("success")) {
-                    return@withContext Result.success("Đổi IP Dahua/IMOU thành công!")
+                    return Result.success("Đổi IP Dahua/IMOU thành công sang ${payload.newIp}!")
+                } else if (responseStr.contains("password", ignoreCase = true) && responseStr.contains("error", ignoreCase = true)) {
+                    return Result.failure(Exception("Sai mật khẩu thiết bị!"))
                 }
             } catch (e: SocketTimeoutException) {
-                return@withContext Result.success("Đã gửi lệnh đổi IP tới thiết bị Dahua/IMOU.")
+                return Result.success("Đã gửi lệnh đổi IP Dahua/IMOU sang ${payload.newIp}.")
             }
 
-            Result.success("Đã hoàn tất gửi cấu hình tới thiết bị.")
+            return Result.success("Đã hoàn tất gửi cấu hình tới thiết bị.")
         } catch (e: Exception) {
             Log.e(TAG, "Dahua modify failed", e)
-            Result.failure(e)
+            return Result.failure(e)
         } finally {
             socket?.close()
         }

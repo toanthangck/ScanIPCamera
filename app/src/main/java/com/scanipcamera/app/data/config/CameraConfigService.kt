@@ -683,4 +683,102 @@ class CameraConfigService {
             Result.failure(Exception("Lỗi cài đặt NTP: ${e.message}"))
         }
     }
+
+    /**
+     * Configure Dahua / IMOU / KBVISION network via HTTP CGI (configManager.cgi) with Digest Auth
+     */
+    suspend fun configureDahuaNetworkViaHttp(
+        device: CameraDevice,
+        payload: com.scanipcamera.app.data.model.NetworkConfigPayload
+    ): Result<String> = withContext(Dispatchers.IO) {
+        val port = if (device.httpPort > 0) device.httpPort else 80
+        val effectiveGateway = if (payload.newGateway.isNotBlank()) {
+            payload.newGateway.trim()
+        } else {
+            val parts = payload.newIp.split(".")
+            if (parts.size == 4) "${parts[0]}.${parts[1]}.${parts[2]}.1" else "192.168.1.1"
+        }
+        val dhcpStr = if (payload.isDhcp) "true" else "false"
+
+        try {
+            // URL 1: Interface eth0
+            val url1 = "http://${device.ipv4Address}:$port/cgi-bin/configManager.cgi?action=setConfig" +
+                    "&Network.eth0.DhcpEnable=$dhcpStr" +
+                    (if (!payload.isDhcp) {
+                        "&Network.eth0.IPAddress=${payload.newIp}" +
+                        "&Network.eth0.SubnetMask=${payload.newSubnetMask}" +
+                        "&Network.eth0.DefaultGateway=$effectiveGateway"
+                    } else "")
+
+            val res1 = sendHttpRequest(url1, "GET", null, "admin", payload.currentPassword)
+            if (res1.isSuccess && (res1.getOrNull()?.contains("OK") == true || res1.getOrNull()?.contains("success") == true)) {
+                return@withContext Result.success("Đổi IP Dahua thành công sang ${payload.newIp}!")
+            }
+
+            // URL 2: Interface[0]
+            val url2 = "http://${device.ipv4Address}:$port/cgi-bin/configManager.cgi?action=setConfig" +
+                    "&NetWork.Interface[0].DhcpEnable=$dhcpStr" +
+                    (if (!payload.isDhcp) {
+                        "&NetWork.Interface[0].IPv4Address=${payload.newIp}" +
+                        "&NetWork.Interface[0].SubnetMask=${payload.newSubnetMask}" +
+                        "&NetWork.Interface[0].GateWay=$effectiveGateway"
+                    } else "")
+
+            val res2 = sendHttpRequest(url2, "GET", null, "admin", payload.currentPassword)
+            if (res2.isSuccess && (res2.getOrNull()?.contains("OK") == true || res2.getOrNull()?.contains("success") == true)) {
+                return@withContext Result.success("Đổi IP Dahua thành công sang ${payload.newIp}!")
+            }
+
+            if (res1.isFailure && res1.exceptionOrNull()?.message?.contains("401") == true) {
+                return@withContext Result.failure(Exception("Sai mật khẩu thiết bị!"))
+            }
+
+            Result.failure(Exception(res1.exceptionOrNull()?.message ?: "Lỗi phản hồi HTTP từ camera"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Configure Hikvision / EZVIZ network via ISAPI HTTP with Digest Auth
+     */
+    suspend fun configureHikvisionNetworkViaHttp(
+        device: CameraDevice,
+        payload: com.scanipcamera.app.data.model.NetworkConfigPayload
+    ): Result<String> = withContext(Dispatchers.IO) {
+        val port = if (device.httpPort > 0) device.httpPort else 80
+        val effectiveGateway = if (payload.newGateway.isNotBlank()) {
+            payload.newGateway.trim()
+        } else {
+            val parts = payload.newIp.split(".")
+            if (parts.size == 4) "${parts[0]}.${parts[1]}.${parts[2]}.1" else "192.168.1.1"
+        }
+
+        try {
+            val xml = """
+                <?xml version="1.0" encoding="UTF-8"?>
+                <IPAddress version="2.0" xmlns="http://www.hikvision.com/ver20/XMLSchema">
+                    <ipVersion>v4</ipVersion>
+                    <addressingType>${if (payload.isDhcp) "dynamic" else "static"}</addressingType>
+                    <ipAddress>${payload.newIp}</ipAddress>
+                    <subnetMask>${payload.newSubnetMask}</subnetMask>
+                    <DefaultGateway>
+                        <ipAddress>$effectiveGateway</ipAddress>
+                    </DefaultGateway>
+                </IPAddress>
+            """.trimIndent()
+
+            val url = "http://${device.ipv4Address}:$port/ISAPI/System/Network/interfaces/1/ipAddress"
+            val res = sendHttpRequest(url, "PUT", xml, "admin", payload.currentPassword)
+            if (res.isSuccess) {
+                return@withContext Result.success("Đổi IP Hikvision thành công sang ${payload.newIp}!")
+            }
+            if (res.isFailure && res.exceptionOrNull()?.message?.contains("401") == true) {
+                return@withContext Result.failure(Exception("Sai mật khẩu thiết bị!"))
+            }
+            Result.failure(Exception(res.exceptionOrNull()?.message ?: "Lỗi phản hồi HTTP từ thiết bị"))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 }
