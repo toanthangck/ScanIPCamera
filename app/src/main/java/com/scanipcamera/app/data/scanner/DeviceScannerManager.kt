@@ -3,6 +3,8 @@ package com.scanipcamera.app.data.scanner
 import android.content.Context
 import android.util.Log
 import com.scanipcamera.app.data.model.CameraDevice
+import com.scanipcamera.app.data.model.DeviceBrand
+import com.scanipcamera.app.data.model.DeviceCategory
 import com.scanipcamera.app.data.network.NetworkUtils
 import com.scanipcamera.app.data.network.WifiNetworkInfo
 import kotlinx.coroutines.coroutineScope
@@ -49,14 +51,26 @@ class DeviceScannerManager(private val context: Context) {
             if (existing == null) {
                 discoveredMap[key] = device
             } else {
-                // If existing was found via Ping or ONVIF, enhance with SADP/DHIP info
-                if (existing.rawProtocol == "PING/PORT" && device.rawProtocol != "PING/PORT") {
-                    discoveredMap[key] = device
-                } else if (existing.rawProtocol == "ONVIF" && (device.rawProtocol == "SADP" || device.rawProtocol == "DHIP")) {
-                    discoveredMap[key] = device
-                } else if (existing.serialNumber.isEmpty() && device.serialNumber.isNotEmpty()) {
-                    discoveredMap[key] = device
-                }
+                val mergedMac = if (existing.macAddress.isNotBlank()) existing.macAddress else device.macAddress
+                val mergedSerial = if (existing.serialNumber.isNotBlank()) existing.serialNumber else device.serialNumber
+                val mergedBrand = if (existing.brand != DeviceBrand.ONVIF && existing.brand != DeviceBrand.UNKNOWN) existing.brand else device.brand
+                val mergedModel = if (existing.model != "ONVIF Camera" && existing.model.isNotBlank()) existing.model else device.model
+                val mergedCategory = if (existing.category != com.scanipcamera.app.data.model.DeviceCategory.CAMERA) existing.category else device.category
+                val mergedChannels = if (existing.channelCount > 0) existing.channelCount else device.channelCount
+                val mergedProtocol = if (device.rawProtocol == "SADP" || device.rawProtocol == "DHIP") device.rawProtocol else existing.rawProtocol
+
+                val merged = existing.copy(
+                    macAddress = mergedMac,
+                    serialNumber = mergedSerial,
+                    brand = mergedBrand,
+                    model = mergedModel,
+                    category = mergedCategory,
+                    channelCount = mergedChannels,
+                    rawProtocol = mergedProtocol,
+                    httpPort = if (device.httpPort > 0) device.httpPort else existing.httpPort,
+                    sdkPort = if (device.sdkPort > 0) device.sdkPort else existing.sdkPort
+                )
+                discoveredMap[key] = merged
             }
             _devices.value = discoveredMap.values.toList()
         }

@@ -107,34 +107,43 @@ fun ScannerScreen(
                 )
             )
         },
+        floatingActionButtonPosition = FabPosition.Center,
         floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = { viewModel.startScanning() },
-                icon = {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                FloatingActionButton(
+                    onClick = { viewModel.startScanning() },
+                    shape = androidx.compose.foundation.shape.CircleShape,
+                    containerColor = Color(0xFF0091EA),
+                    contentColor = Color.White,
+                    modifier = Modifier.size(66.dp)
+                ) {
                     if (isScanning) {
                         CircularProgressIndicator(
-                            modifier = Modifier.size(20.dp),
+                            modifier = Modifier.size(28.dp),
                             color = Color.White,
-                            strokeWidth = 2.dp
+                            strokeWidth = 3.dp
                         )
                     } else {
-                        Icon(imageVector = Icons.Default.Search, contentDescription = null)
+                        Text("QUÉT", fontWeight = FontWeight.ExtraBold, fontSize = 14.sp)
                     }
-                },
-                text = {
+                }
+                Surface(
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                    shape = RoundedCornerShape(12.dp),
+                    shadowElevation = 2.dp
+                ) {
                     Text(
-                        if (isScanning) {
-                            if (scanMode == ScanMode.SUBNET_PING && scanProgress != null) {
-                                "Đang quét: ${scanProgress!!.first}/${scanProgress!!.second}"
-                            } else {
-                                "Đang dò mạng..."
-                            }
-                        } else {
-                            if (scanMode == ScanMode.UDP_DISCOVERY) "Quét thiết bị" else "Quét dải IP"
-                        }
+                        text = "${devices.size} Thiết bị đã phát hiện",
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
                     )
                 }
-            )
+            }
         }
     ) { paddingValues ->
         Column(
@@ -142,6 +151,48 @@ fun ScannerScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
+            // ConfigTool Mobile style: Credentials input row
+            var defaultUser by remember { mutableStateOf("admin") }
+            var defaultPassword by remember { mutableStateOf("admin123") }
+
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 4.dp),
+                shape = RoundedCornerShape(10.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                    Text(
+                        text = "Thông tin kết nối thiết bị",
+                        fontSize = 11.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 2.dp)
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = defaultUser,
+                            onValueChange = { defaultUser = it },
+                            placeholder = { Text("Tài khoản", fontSize = 11.sp) },
+                            leadingIcon = { Icon(Icons.Default.Person, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f).height(48.dp)
+                        )
+                        OutlinedTextField(
+                            value = defaultPassword,
+                            onValueChange = { defaultPassword = it },
+                            placeholder = { Text("Mật khẩu", fontSize = 11.sp) },
+                            leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, modifier = Modifier.size(16.dp)) },
+                            singleLine = true,
+                            modifier = Modifier.weight(1f).height(48.dp)
+                        )
+                    }
+                }
+            }
+
             // Enhanced Network Dashboard Banner (LAN + WAN)
             Card(
                 modifier = Modifier
