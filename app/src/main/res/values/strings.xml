@@ -1,0 +1,13 @@
+<resources>
+    <string name="app_name">Scan IP Camera</string>
+    <string name="scan_title">Quét Thiết Bị Camera</string>
+    <string name="scan_subtitle">Hikvision, Dahua, EZVIZ, IMOU &amp; ONVIF</string>
+    <string name="btn_scan">Bắt đầu quét</string>
+    <string name="btn_scanning">Đang tìm thiết bị...</string>
+    <string name="device_found">Đã tìm thấy %d thiết bị</string>
+    <string name="no_devices">Chưa tìm thấy camera hoặc đầu ghi nào trong mạng Wi-Fi.</string>
+    <string name="activated">Đã kích hoạt</string>
+    <string name="inactive">Chưa kích hoạt</string>
+    <string name="config_ip">Cấu hình mạng</string>
+    <string name="activate_device">Kích hoạt</string>
+</resources>
