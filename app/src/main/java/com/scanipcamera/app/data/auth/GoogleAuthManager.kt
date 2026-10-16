@@ -13,15 +13,16 @@ import java.util.Date
 import java.util.Locale
 
 data class GoogleUser(
-    val email: String = "toanhangts@gmail.com",
-    val displayName: String = "Nguyễn Toàn Thắng",
+    val email: String = "",
+    val displayName: String = "Kỹ thuật viên",
     val photoUrl: String = "",
-    val isLoggedIn: Boolean = true,
-    val technicianName: String = "Nguyễn Toàn Thắng",
-    val technicianPhone: String = "0965620086",
+    val isLoggedIn: Boolean = false,
+    val companyName: String = "ĐƠN VỊ THI CÔNG CAMERA",
+    val technicianName: String = "Kỹ thuật viên",
+    val technicianPhone: String = "",
     val defaultUsername: String = "admin",
-    val defaultCameraPassword: String = "admin123",
-    val defaultNvrPassword: String = "admin12345",
+    val defaultCameraPassword: String = "",
+    val defaultNvrPassword: String = "",
     val lastSyncTimestamp: Long = 0L,
     val autoSyncEnabled: Boolean = true
 )
@@ -34,23 +35,25 @@ class GoogleAuthManager(private val context: Context) {
     val currentUser: StateFlow<GoogleUser> = _currentUser.asStateFlow()
 
     private fun loadUser(): GoogleUser {
-        val email = prefs.getString("email", "toanhangts@gmail.com") ?: "toanhangts@gmail.com"
-        val name = prefs.getString("display_name", "Nguyễn Toàn Thắng") ?: "Nguyễn Toàn Thắng"
+        val email = prefs.getString("email", "") ?: ""
+        val name = prefs.getString("display_name", "") ?: ""
         val photo = prefs.getString("photo_url", "") ?: ""
-        val loggedIn = prefs.getBoolean("is_logged_in", true)
-        val techName = prefs.getString("tech_name", "Nguyễn Toàn Thắng") ?: "Nguyễn Toàn Thắng"
-        val techPhone = prefs.getString("tech_phone", "0965620086") ?: "0965620086"
+        val loggedIn = prefs.getBoolean("is_logged_in", email.isNotBlank())
+        val compName = prefs.getString("company_name", "ĐƠN VỊ THI CÔNG CAMERA") ?: "ĐƠN VỊ THI CÔNG CAMERA"
+        val techName = prefs.getString("tech_name", name.ifBlank { "Kỹ thuật viên" }) ?: "Kỹ thuật viên"
+        val techPhone = prefs.getString("tech_phone", "") ?: ""
         val defUser = prefs.getString("def_user", "admin") ?: "admin"
-        val defCamPass = prefs.getString("def_cam_pass", "admin123") ?: "admin123"
-        val defNvrPass = prefs.getString("def_nvr_pass", "admin12345") ?: "admin12345"
-        val lastSync = prefs.getLong("last_sync_time", System.currentTimeMillis())
+        val defCamPass = prefs.getString("def_cam_pass", "") ?: ""
+        val defNvrPass = prefs.getString("def_nvr_pass", "") ?: ""
+        val lastSync = prefs.getLong("last_sync_time", 0L)
         val autoSync = prefs.getBoolean("auto_sync", true)
 
         return GoogleUser(
             email = email,
-            displayName = name,
+            displayName = name.ifBlank { if (email.isNotBlank()) email.substringBefore("@") else "Chưa đăng nhập" },
             photoUrl = photo,
             isLoggedIn = loggedIn,
+            companyName = compName,
             technicianName = techName,
             technicianPhone = techPhone,
             defaultUsername = defUser,
@@ -78,15 +81,18 @@ class GoogleAuthManager(private val context: Context) {
         )
     }
 
-    fun updateTechnicianProfile(name: String, phone: String) {
+    fun updateTechnicianProfile(name: String, phone: String, company: String = "") {
+        val comp = if (company.isNotBlank()) company.trim() else _currentUser.value.companyName
         prefs.edit()
             .putString("tech_name", name.trim())
             .putString("tech_phone", phone.trim())
+            .putString("company_name", comp)
             .apply()
 
         _currentUser.value = _currentUser.value.copy(
             technicianName = name.trim(),
-            technicianPhone = phone.trim()
+            technicianPhone = phone.trim(),
+            companyName = comp
         )
     }
 
@@ -106,10 +112,16 @@ class GoogleAuthManager(private val context: Context) {
 
     fun signOut() {
         prefs.edit()
+            .remove("email")
+            .remove("display_name")
+            .remove("photo_url")
             .putBoolean("is_logged_in", false)
             .apply()
 
         _currentUser.value = _currentUser.value.copy(
+            email = "",
+            displayName = "Chưa đăng nhập",
+            photoUrl = "",
             isLoggedIn = false
         )
     }

@@ -268,8 +268,8 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
         _showDefaultCredentialsDialog.value = false
     }
 
-    fun updateTechnicianProfile(name: String, phone: String) {
-        googleAuthManager.updateTechnicianProfile(name, phone)
+    fun updateTechnicianProfile(name: String, phone: String, company: String = "") {
+        googleAuthManager.updateTechnicianProfile(name, phone, company)
     }
 
     fun updateDefaultCredentials(user: String, camPass: String, nvrPass: String) {

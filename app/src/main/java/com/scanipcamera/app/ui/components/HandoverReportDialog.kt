@@ -46,8 +46,9 @@ fun HandoverReportDialog(
     wanIp: String = "",
     wifiSsid: String = "",
     initialProject: SiteProject? = null,
-    defaultTechnicianName: String = "Nguyễn Toàn Thắng",
-    defaultTechnicianPhone: String = "0965620086",
+    defaultCompanyName: String = "ĐƠN VỊ THI CÔNG CAMERA",
+    defaultTechnicianName: String = "Kỹ thuật viên",
+    defaultTechnicianPhone: String = "",
     onDismiss: () -> Unit,
     onSaveProject: (SiteProject) -> Unit
 ) {
@@ -57,12 +58,21 @@ fun HandoverReportDialog(
     var selectedTab by remember { mutableIntStateOf(0) }
 
     // Form fields
+    var companyName by remember {
+        mutableStateOf(initialProject?.companyName ?: defaultCompanyName.ifBlank { "ĐƠN VỊ THI CÔNG CAMERA" })
+    }
     var siteName by remember {
         mutableStateOf(initialProject?.siteName ?: "")
     }
     var customerName by remember { mutableStateOf(initialProject?.customerName ?: "") }
     var customerPhone by remember { mutableStateOf(initialProject?.customerPhone ?: "") }
     var address by remember { mutableStateOf(initialProject?.address ?: "") }
+    var technicianName by remember {
+        mutableStateOf(initialProject?.technicianName ?: defaultTechnicianName.ifBlank { "Kỹ thuật viên" })
+    }
+    var technicianPhone by remember {
+        mutableStateOf(initialProject?.technicianPhone ?: defaultTechnicianPhone)
+    }
     var warrantyMonths by remember { mutableIntStateOf(initialProject?.warrantyMonths ?: 24) }
     var notes by remember { mutableStateOf(initialProject?.notes ?: "") }
 
@@ -101,11 +111,11 @@ fun HandoverReportDialog(
     // Handover checklist
     val checklistItems = remember {
         mutableStateListOf(
-            "Đã cài đặt phần mềm xem qua điện thoại cho chủ nhà",
+            "Đã cài đặt phần mềm xem camera qua điện thoại cho gia chủ",
             "Đã hướng dẫn xem lại video và cách đổi mật khẩu an toàn",
-            "Đã kiểm tra góc nhìn ban ngày và hồng ngoại ban đêm",
+            "Đã kiểm tra góc nhìn bao quát, rõ nét ban ngày và hồng ngoại ban đêm",
             "Đã cấu hình tự động đồng bộ giờ NTP chính xác",
-            "Đã bàn giao đầy đủ nguồn adapter, jack nối và phụ kiện"
+            "Đã bàn giao đầy đủ nguồn adapter, phụ kiện & tài khoản đăng nhập"
         )
     }
 
@@ -117,8 +127,9 @@ fun HandoverReportDialog(
             customerName = customerName,
             customerPhone = customerPhone,
             address = address,
-            technicianName = defaultTechnicianName,
-            technicianPhone = defaultTechnicianPhone,
+            companyName = companyName,
+            technicianName = technicianName,
+            technicianPhone = technicianPhone,
             createdAt = initialProject?.createdAt ?: System.currentTimeMillis(),
             wanIp = wanIp,
             wifiSsid = wifiSsid,
@@ -218,6 +229,15 @@ fun HandoverReportDialog(
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             OutlinedTextField(
+                                value = companyName,
+                                onValueChange = { companyName = it },
+                                label = { Text("Đơn vị thi công / Tên công ty *") },
+                                placeholder = { Text("VD: CÔNG TY CÔNG NGHỆ & CAMERA AN NINH") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+
+                            OutlinedTextField(
                                 value = siteName,
                                 onValueChange = { siteName = it },
                                 label = { Text("Tên công trình / Dự án *") },
@@ -257,6 +277,26 @@ fun HandoverReportDialog(
                                 modifier = Modifier.fillMaxWidth()
                             )
 
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = technicianName,
+                                    onValueChange = { technicianName = it },
+                                    label = { Text("Kỹ thuật viên phụ trách") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1.2f)
+                                )
+                                OutlinedTextField(
+                                    value = technicianPhone,
+                                    onValueChange = { technicianPhone = it },
+                                    label = { Text("Hotline / SĐT KTV") },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+
                             // Warranty Duration Chips
                             Column {
                                 Text(
@@ -273,43 +313,6 @@ fun HandoverReportDialog(
                                             onClick = { warrantyMonths = months },
                                             label = { Text("$months Tháng", fontSize = 11.sp, fontWeight = FontWeight.Bold) },
                                             modifier = Modifier.height(30.dp)
-                                        )
-                                    }
-                                }
-                            }
-
-                            // Technician info card from Profile
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                ),
-                                shape = RoundedCornerShape(8.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Person,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = "KTV: $defaultTechnicianName • $defaultTechnicianPhone",
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Text(
-                                            text = "Được cấu hình trong mục Cài đặt tài khoản",
-                                            fontSize = 10.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
                                 }
@@ -508,17 +511,19 @@ fun HandoverReportDialog(
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
                                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
                             ) {
-                                Column(modifier = Modifier.padding(10.dp)) {
+                                Column(modifier = Modifier.padding(12.dp)) {
                                     Text(
-                                        text = "Đơn vị thi công bảo hành:",
+                                        text = "Đơn vị thi công & Cam kết bảo hành:",
                                         fontWeight = FontWeight.Bold,
-                                        fontSize = 12.sp
+                                        fontSize = 12.5.sp,
+                                        color = MaterialTheme.colorScheme.primary
                                     )
+                                    Spacer(modifier = Modifier.height(4.dp))
                                     Text(
-                                        text = "• Hotline / Zalo hỗ trợ: 0965.620.086\n• Email: toanhangts@gmail.com\n• Website: cameratrungthuc.com - cameratuson.com",
+                                        text = "• Đơn vị: $companyName\n• Kỹ thuật viên: $technicianName${if (technicianPhone.isNotBlank()) " ($technicianPhone)" else ""}\n• Bảo hành: $warrantyMonths tháng chính hãng theo tiêu chuẩn nhà sản xuất",
                                         fontSize = 11.5.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        lineHeight = 16.sp
+                                        lineHeight = 17.sp
                                     )
                                 }
                             }

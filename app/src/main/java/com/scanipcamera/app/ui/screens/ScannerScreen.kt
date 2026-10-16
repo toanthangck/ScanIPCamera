@@ -1004,6 +1004,7 @@ fun ScannerScreen(
             wanIp = wanInfo?.ip ?: "",
             wifiSsid = wifiInfo.ssid,
             initialProject = editingProject,
+            defaultCompanyName = googleUser.companyName,
             defaultTechnicianName = googleUser.technicianName,
             defaultTechnicianPhone = googleUser.technicianPhone,
             onDismiss = {
@@ -1062,8 +1063,8 @@ fun ScannerScreen(
                     context.startActivity(android.content.Intent.createChooser(intent, "Chia sẻ file sao lưu"))
                 }
             },
-            onUpdateTechnicianProfile = { name, phone ->
-                viewModel.updateTechnicianProfile(name, phone)
+            onUpdateTechnicianProfile = { name, phone, company ->
+                viewModel.updateTechnicianProfile(name, phone, company)
             },
             onUpdateDefaultCredentials = { u, camP, nvrP ->
                 viewModel.updateDefaultCredentials(u, camP, nvrP)

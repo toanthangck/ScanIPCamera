@@ -1,9 +1,13 @@
 package com.scanipcamera.app.ui.components
 
+import android.accounts.AccountManager
+import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -42,7 +46,7 @@ fun GoogleSyncDialog(
     onSyncToGoogle: () -> Unit,
     onRestoreFromJson: (String) -> Unit,
     onExportBackup: () -> Unit,
-    onUpdateTechnicianProfile: (name: String, phone: String) -> Unit = { _, _ -> },
+    onUpdateTechnicianProfile: (name: String, phone: String, company: String) -> Unit = { _, _, _ -> },
     onUpdateDefaultCredentials: (user: String, camPass: String, nvrPass: String) -> Unit = { _, _, _ -> }
 ) {
     val context = LocalContext.current
@@ -50,6 +54,7 @@ fun GoogleSyncDialog(
     var emailInput by remember { mutableStateOf(user.email) }
     var nameInput by remember { mutableStateOf(user.displayName) }
 
+    var companyInput by remember { mutableStateOf(user.companyName) }
     var techNameInput by remember { mutableStateOf(user.technicianName) }
     var techPhoneInput by remember { mutableStateOf(user.technicianPhone) }
 
@@ -57,6 +62,44 @@ fun GoogleSyncDialog(
 
     var showImportBox by remember { mutableStateOf(false) }
     var importJsonText by remember { mutableStateOf("") }
+
+    // Native Android Google Account Picker Launcher
+    val accountPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+            val accountName = result.data?.getStringExtra(AccountManager.KEY_ACCOUNT_NAME)
+            if (!accountName.isNullOrBlank()) {
+                val autoName = accountName.substringBefore("@")
+                    .replace(".", " ")
+                    .split(" ")
+                    .joinToString(" ") { it.replaceFirstChar { c -> c.uppercase() } }
+                onSignIn(accountName, autoName)
+                emailInput = accountName
+                nameInput = autoName
+                showEditAccount = false
+                Toast.makeText(context, "Đã chọn tài khoản Google: $accountName", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    fun launchGoogleAccountPicker() {
+        try {
+            val intent = AccountManager.newChooseAccountIntent(
+                null,
+                null,
+                arrayOf("com.google"),
+                null,
+                null,
+                null,
+                null
+            )
+            accountPickerLauncher.launch(intent)
+        } catch (e: Exception) {
+            showEditAccount = true
+            Toast.makeText(context, "Không thể mở trình chọn tài khoản: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
 
     val lastSyncStr = remember(user.lastSyncTimestamp) {
         if (user.lastSyncTimestamp > 0) {
@@ -72,8 +115,8 @@ fun GoogleSyncDialog(
     ) {
         Surface(
             modifier = Modifier
-                .fillMaxWidth(0.95f)
-                .fillMaxHeight(0.90f),
+                .fillMaxWidth(0.97f)
+                .fillMaxHeight(0.95f),
             shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 6.dp
@@ -139,74 +182,154 @@ fun GoogleSyncDialog(
                         border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF4285F4).copy(alpha = 0.35f))
                     ) {
                         Column(modifier = Modifier.padding(14.dp)) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
+                            if (!user.isLoggedIn || user.email.isBlank()) {
+                                // Not Logged In State
                                 Row(
-                                    modifier = Modifier.weight(1f),
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    // Google Avatar
                                     Surface(
                                         shape = CircleShape,
-                                        color = Color(0xFF1A73E8),
-                                        modifier = Modifier.size(44.dp)
+                                        color = Color(0xFF1A73E8).copy(alpha = 0.12f),
+                                        modifier = Modifier.size(46.dp)
                                     ) {
                                         Box(contentAlignment = Alignment.Center) {
-                                            Text(
-                                                text = user.displayName.take(1).uppercase(),
-                                                color = Color.White,
-                                                fontWeight = FontWeight.ExtraBold,
-                                                fontSize = 20.sp
+                                            Icon(
+                                                imageVector = Icons.Default.AccountCircle,
+                                                contentDescription = null,
+                                                tint = Color(0xFF1A73E8),
+                                                modifier = Modifier.size(30.dp)
                                             )
                                         }
                                     }
-                                    Spacer(modifier = Modifier.width(12.dp))
-                                    Column {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Text(
-                                                text = user.displayName,
-                                                fontWeight = FontWeight.Bold,
-                                                fontSize = 14.sp
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Icon(
-                                                imageVector = Icons.Default.Verified,
-                                                contentDescription = "Verified Google",
-                                                tint = Color(0xFF1A73E8),
-                                                modifier = Modifier.size(15.dp)
-                                            )
-                                        }
+                                    Column(modifier = Modifier.weight(1f)) {
                                         Text(
-                                            text = user.email,
-                                            fontSize = 12.sp,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            text = "Tài khoản Google",
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 14.sp
                                         )
                                         Text(
-                                            text = "Trạng thái: Đã kết nối tài khoản Google",
-                                            fontSize = 10.5.sp,
-                                            color = Color(0xFF059669),
-                                            fontWeight = FontWeight.Medium
+                                            text = "Đăng nhập bằng tài khoản Google trên máy để sao lưu dữ liệu công trình",
+                                            fontSize = 11.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
                                 }
 
-                                TextButton(
-                                    onClick = { showEditAccount = !showEditAccount },
-                                    contentPadding = PaddingValues(horizontal = 8.dp)
+                                Spacer(modifier = Modifier.height(12.dp))
+
+                                Button(
+                                    onClick = { launchGoogleAccountPicker() },
+                                    modifier = Modifier.fillMaxWidth().height(42.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1A73E8)),
+                                    shape = RoundedCornerShape(8.dp)
                                 ) {
-                                    Text(
-                                        text = if (showEditAccount) "Đóng" else "Đổi tài khoản",
-                                        fontSize = 11.5.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFF1A73E8)
-                                    )
+                                    Icon(Icons.Default.AccountCircle, contentDescription = null, modifier = Modifier.size(18.dp))
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text("Đăng nhập bằng tài khoản Google trên máy", fontWeight = FontWeight.Bold, fontSize = 12.5.sp)
+                                }
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    TextButton(
+                                        onClick = { showEditAccount = !showEditAccount },
+                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp)
+                                    ) {
+                                        Text(
+                                            text = if (showEditAccount) "Ẩn nhập thủ công" else "Hoặc nhập tài khoản thủ công",
+                                            fontSize = 11.5.sp,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                }
+                            } else {
+                                // Logged In State
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
+                                ) {
+                                    Row(
+                                        modifier = Modifier.weight(1f),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // Google Avatar
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = Color(0xFF1A73E8),
+                                            modifier = Modifier.size(44.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Text(
+                                                    text = (user.displayName.ifBlank { user.email }).take(1).uppercase(),
+                                                    color = Color.White,
+                                                    fontWeight = FontWeight.ExtraBold,
+                                                    fontSize = 20.sp
+                                                )
+                                            }
+                                        }
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Column {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                Text(
+                                                    text = user.displayName.ifBlank { "Tài khoản Google" },
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 14.sp
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Icon(
+                                                    imageVector = Icons.Default.Verified,
+                                                    contentDescription = "Verified Google",
+                                                    tint = Color(0xFF1A73E8),
+                                                    modifier = Modifier.size(15.dp)
+                                                )
+                                            }
+                                            Text(
+                                                text = user.email,
+                                                fontSize = 12.sp,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Text(
+                                                text = "Trạng thái: Đã kết nối tài khoản Google",
+                                                fontSize = 10.5.sp,
+                                                color = Color(0xFF059669),
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+                                    }
+
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        OutlinedButton(
+                                            onClick = { launchGoogleAccountPicker() },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                            modifier = Modifier.height(30.dp)
+                                        ) {
+                                            Text(
+                                                text = "Đổi tài khoản",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color(0xFF1A73E8)
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        TextButton(
+                                            onClick = { onSignOut() },
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp),
+                                            modifier = Modifier.height(24.dp)
+                                        ) {
+                                            Text(
+                                                text = "Đăng xuất",
+                                                fontSize = 11.sp,
+                                                color = MaterialTheme.colorScheme.error
+                                            )
+                                        }
+                                    }
                                 }
                             }
 
-                            // Edit Account Form
+                            // Optional Manual Edit Form
                             AnimatedVisibility(visible = showEditAccount) {
                                 Column(
                                     modifier = Modifier
@@ -234,14 +357,17 @@ fun GoogleSyncDialog(
                                     ) {
                                         Button(
                                             onClick = {
-                                                onSignIn(emailInput, nameInput)
-                                                showEditAccount = false
-                                                Toast.makeText(context, "Đã lưu tài khoản: $emailInput", Toast.LENGTH_SHORT).show()
+                                                val email = emailInput.trim()
+                                                if (email.isNotBlank()) {
+                                                    onSignIn(email, nameInput.trim().ifEmpty { email.substringBefore("@") })
+                                                    showEditAccount = false
+                                                    Toast.makeText(context, "Đã lưu tài khoản: $email", Toast.LENGTH_SHORT).show()
+                                                }
                                             }
                                         ) {
                                             Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
                                             Spacer(modifier = Modifier.width(6.dp))
-                                            Text("Cập nhật tài khoản")
+                                            Text("Lưu tài khoản")
                                         }
                                     }
                                 }
@@ -249,7 +375,7 @@ fun GoogleSyncDialog(
                         }
                     }
 
-                    // Technician Profile Configuration Card
+                    // Technician & Company Profile Configuration Card
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
@@ -261,21 +387,30 @@ fun GoogleSyncDialog(
                             verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Default.Person, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                                Icon(Icons.Default.Business, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Column {
                                     Text(
-                                        text = "Hồ Sơ Kỹ Thuật Viên Phụ Trách",
+                                        text = "Hồ Sơ Đơn Vị Thi Công & Kỹ Thuật",
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 13.5.sp
                                     )
                                     Text(
-                                        text = "Tự động điền vào biên bản nghiệm thu & bàn giao công trình",
+                                        text = "Tự động điền vào tiêu đề & biên bản nghiệm thu bàn giao",
                                         fontSize = 10.5.sp,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
+
+                            OutlinedTextField(
+                                value = companyInput,
+                                onValueChange = { companyInput = it },
+                                label = { Text("Tên công ty / Đơn vị thi công") },
+                                placeholder = { Text("VD: CÔNG TY CÔNG NGHỆ & CAMERA AN NINH") },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -291,7 +426,7 @@ fun GoogleSyncDialog(
                                 OutlinedTextField(
                                     value = techPhoneInput,
                                     onValueChange = { techPhoneInput = it },
-                                    label = { Text("SĐT KTV") },
+                                    label = { Text("SĐT / Hotline") },
                                     singleLine = true,
                                     modifier = Modifier.weight(1f)
                                 )
@@ -303,8 +438,8 @@ fun GoogleSyncDialog(
                             ) {
                                 Button(
                                     onClick = {
-                                        onUpdateTechnicianProfile(techNameInput, techPhoneInput)
-                                        Toast.makeText(context, "Đã lưu thông tin KTV: $techNameInput ($techPhoneInput)", Toast.LENGTH_SHORT).show()
+                                        onUpdateTechnicianProfile(techNameInput, techPhoneInput, companyInput)
+                                        Toast.makeText(context, "Đã lưu hồ sơ kỹ thuật & đơn vị thi công!", Toast.LENGTH_SHORT).show()
                                     },
                                     shape = RoundedCornerShape(8.dp)
                                 ) {

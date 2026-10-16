@@ -95,6 +95,7 @@ class SiteProjectRepository(private val context: Context) {
             put("customerName", project.customerName)
             put("customerPhone", project.customerPhone)
             put("address", project.address)
+            put("companyName", project.companyName)
             put("technicianName", project.technicianName)
             put("technicianPhone", project.technicianPhone)
             put("createdAt", project.createdAt)
@@ -191,8 +192,9 @@ class SiteProjectRepository(private val context: Context) {
             customerName = json.optString("customerName"),
             customerPhone = json.optString("customerPhone"),
             address = json.optString("address"),
-            technicianName = json.optString("technicianName", "Nguyễn Toàn Thắng"),
-            technicianPhone = json.optString("technicianPhone", "0965620086"),
+            companyName = json.optString("companyName", "ĐƠN VỊ THI CÔNG CAMERA"),
+            technicianName = json.optString("technicianName", "Kỹ thuật viên"),
+            technicianPhone = json.optString("technicianPhone", ""),
             createdAt = json.optLong("createdAt", System.currentTimeMillis()),
             wanIp = json.optString("wanIp"),
             wifiSsid = json.optString("wifiSsid"),
