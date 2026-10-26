@@ -51,6 +51,7 @@ fun ScannerScreen(
     val settingsDevice by viewModel.settingsDevice.collectAsState()
     val activatingDevice by viewModel.activatingDevice.collectAsState()
     val rtspDevice by viewModel.rtspDevice.collectAsState()
+    val liveViewDevice by viewModel.liveViewDevice.collectAsState()
     val diagnosticDevice by viewModel.diagnosticDevice.collectAsState()
     val wanPortDevice by viewModel.wanPortDevice.collectAsState()
     val rebootingDevice by viewModel.rebootingDevice.collectAsState()
@@ -698,7 +699,17 @@ fun ScannerScreen(
                             onConfigureClick = { viewModel.openConfigDialog(device) },
                             onSettingsClick = { viewModel.openSettingsDialog(device) },
                             onActivateClick = { viewModel.openActivationDialog(device) },
-                            onRtspClick = { viewModel.openRtspDialog(device) },
+                            onRtspClick = {
+                                if (device.brand == com.scanipcamera.app.data.model.DeviceBrand.DAHUA ||
+                                    device.brand == com.scanipcamera.app.data.model.DeviceBrand.KBVISION ||
+                                    device.brand == com.scanipcamera.app.data.model.DeviceBrand.IMOU ||
+                                    device.sdkPort == 37777
+                                ) {
+                                    viewModel.openLiveViewDialog(device)
+                                } else {
+                                    viewModel.openRtspDialog(device)
+                                }
+                            },
                             onDiagnosticClick = { viewModel.openDiagnosticDialog(device) },
                             onWanPortClick = { viewModel.openWanPortDialog(device) },
                             onRebootClick = { viewModel.openRebootDialog(device) },
@@ -739,7 +750,18 @@ fun ScannerScreen(
             device = device,
             defaultUser = defaultUser,
             defaultPassword = defaultPassword,
+            onOpenLiveView = { dev -> viewModel.openLiveViewDialog(dev) },
             onDismiss = { viewModel.closeRtspDialog() }
+        )
+    }
+
+    // Dahua Live View Dialog (NetSDK + PlaySDK)
+    liveViewDevice?.let { device ->
+        com.scanipcamera.app.ui.components.DahuaLiveViewDialog(
+            device = device,
+            defaultUser = defaultUser,
+            defaultPassword = defaultPassword,
+            onDismiss = { viewModel.closeLiveViewDialog() }
         )
     }
 

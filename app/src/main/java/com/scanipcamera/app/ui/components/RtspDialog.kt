@@ -34,6 +34,7 @@ fun RtspDialog(
     device: CameraDevice,
     defaultUser: String = "admin",
     defaultPassword: String = "",
+    onOpenLiveView: ((CameraDevice) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -92,6 +93,29 @@ fun RtspDialog(
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                         modifier = Modifier.weight(1f)
                     )
+                }
+
+                val isDahuaDevice = device.brand == com.scanipcamera.app.data.model.DeviceBrand.DAHUA ||
+                        device.brand == com.scanipcamera.app.data.model.DeviceBrand.KBVISION ||
+                        device.brand == com.scanipcamera.app.data.model.DeviceBrand.IMOU ||
+                        device.sdkPort == 37777
+
+                if (isDahuaDevice && onOpenLiveView != null) {
+                    Button(
+                        onClick = {
+                            onDismiss()
+                            onOpenLiveView(device)
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = androidx.compose.ui.graphics.Color(0xFFEA580C)),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(38.dp),
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Icon(Icons.Default.Videocam, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Xem trực tiếp qua Dahua NetSDK", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
 
                 Text(

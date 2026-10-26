@@ -130,6 +130,9 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
     private val _rtspDevice = MutableStateFlow<CameraDevice?>(null)
     val rtspDevice: StateFlow<CameraDevice?> = _rtspDevice
 
+    private val _liveViewDevice = MutableStateFlow<CameraDevice?>(null)
+    val liveViewDevice: StateFlow<CameraDevice?> = _liveViewDevice
+
     private val _diagnosticDevice = MutableStateFlow<CameraDevice?>(null)
     val diagnosticDevice: StateFlow<CameraDevice?> = _diagnosticDevice
 
@@ -229,6 +232,14 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
 
     fun closeRtspDialog() {
         _rtspDevice.value = null
+    }
+
+    fun openLiveViewDialog(device: CameraDevice) {
+        _liveViewDevice.value = device
+    }
+
+    fun closeLiveViewDialog() {
+        _liveViewDevice.value = null
     }
 
     fun openDiagnosticDialog(device: CameraDevice) {
