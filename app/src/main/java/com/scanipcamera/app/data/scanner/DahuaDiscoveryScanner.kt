@@ -59,6 +59,12 @@ class DahuaDiscoveryScanner(private val networkInterface: NetworkInterface? = nu
                 val it = obj.keys()
                 while (it.hasNext()) {
                     val k = it.next()
+                    for (key in keys) {
+                        if (k.equals(key, ignoreCase = true)) {
+                            val v = obj.optString(k)
+                            if (v.isNotBlank() && v != "null") return v.trim()
+                        }
+                    }
                     val child = obj.opt(k)
                     val res = findValueInJson(child, *keys)
                     if (res.isNotBlank()) return res
@@ -70,6 +76,41 @@ class DahuaDiscoveryScanner(private val networkInterface: NetworkInterface? = nu
                 }
             }
             return ""
+        }
+
+        /**
+         * Extract port from modern Dahua "services" array: [{"name":"HTTP","port":88},{"name":"TCP","port":37777},{"name":"RTSP","port":554}]
+         */
+        fun extractServicePort(obj: Any?, vararg serviceNames: String): Int? {
+            if (obj == null) return null
+            if (obj is JSONObject) {
+                val it = obj.keys()
+                while (it.hasNext()) {
+                    val k = it.next()
+                    if (k.equals("services", ignoreCase = true) || k.equals("service", ignoreCase = true) || k.equals("ports", ignoreCase = true)) {
+                        val arr = obj.optJSONArray(k)
+                        if (arr != null) {
+                            for (i in 0 until arr.length()) {
+                                val item = arr.optJSONObject(i) ?: continue
+                                val name = item.optString("name", item.optString("Name", item.optString("type", "")))
+                                if (serviceNames.any { it.equals(name, ignoreCase = true) }) {
+                                    val port = item.optInt("port", item.optInt("Port", item.optInt("value", 0)))
+                                    if (port > 0) return port
+                                }
+                            }
+                        }
+                    }
+                    val child = obj.opt(k)
+                    val res = extractServicePort(child, *serviceNames)
+                    if (res != null) return res
+                }
+            } else if (obj is JSONArray) {
+                for (i in 0 until obj.length()) {
+                    val res = extractServicePort(obj.opt(i), *serviceNames)
+                    if (res != null) return res
+                }
+            }
+            return null
         }
     }
 
@@ -202,11 +243,19 @@ class DahuaDiscoveryScanner(private val networkInterface: NetworkInterface? = nu
             val gateway = findValueInJson(root, "GateWay", "Gateway", "gateway")
             val subnetMask = findValueInJson(root, "SubnetMask", "subnetMask").ifBlank { "255.255.255.0" }
 
-            val httpPortStr = findValueInJson(root, "HttpPort", "httpPort", "webPort")
-            val httpPort = httpPortStr.toIntOrNull() ?: 80
+            // Extract real ports from services array or top-level keys (handles custom web port)
+            val serviceHttpPort = extractServicePort(root, "HTTP", "WEB")
+            val serviceSdkPort = extractServicePort(root, "TCP", "SDK")
+            val serviceRtspPort = extractServicePort(root, "RTSP")
 
-            val sdkPortStr = findValueInJson(root, "Port", "TCPPort", "tcpPort")
-            val sdkPort = sdkPortStr.toIntOrNull() ?: 37777
+            val httpPortStr = findValueInJson(root, "HttpPort", "httpPort", "HTTPPort", "httpport", "webPort", "WebPort", "web_port", "RemoteHttpPort")
+            val httpPort = serviceHttpPort ?: httpPortStr.toIntOrNull() ?: 80
+
+            val sdkPortStr = findValueInJson(root, "Port", "TCPPort", "tcpPort", "TCP_Port", "tcp_port", "sdkPort")
+            val sdkPort = serviceSdkPort ?: sdkPortStr.toIntOrNull() ?: 37777
+
+            val rtspPortStr = findValueInJson(root, "RtspPort", "rtspPort", "RTSPPort", "rtsp_port")
+            val rtspPort = serviceRtspPort ?: rtspPortStr.toIntOrNull() ?: 554
 
             val version = findValueInJson(root, "Version", "version", "SoftwareVersion")
             val dhcpVal = findValueInJson(root, "dhcp", "DHCP")
@@ -230,6 +279,7 @@ class DahuaDiscoveryScanner(private val networkInterface: NetworkInterface? = nu
                 isActivated = true,
                 httpPort = httpPort,
                 sdkPort = sdkPort,
+                rtspPort = rtspPort,
                 firmwareVersion = version,
                 rawProtocol = "DHIP"
             )

@@ -129,17 +129,39 @@ class DeviceScannerManager(private val context: Context) {
             }
         }
 
-        // Mặc định kiểm tra cổng trên đầu ghi (NVR/DVR) để nhấp nháy cổng được mở
+        // Mặc định kiểm tra cổng trên đầu ghi (NVR/DVR) để nhấp nháy cổng được mở và phát hiện port web bị đổi
         val isRecorder = (device.category == DeviceCategory.NVR || device.category == DeviceCategory.DVR)
         if (isRecorder && device.ipv4Address.isNotBlank() && scope != null) {
             val checkIp = device.ipv4Address
             scope.launch {
-                val open = checkRecorderPorts(checkIp, listOf(device.httpPort, device.rtspPort, device.sdkPort, 80, 554, 8000, 37777, 34567))
+                val candidateWeb = listOf(
+                    device.httpPort,
+                    80, 81, 82, 83, 84, 85, 88, 89,
+                    8000, 8008, 8080, 8081, 8082, 8085, 8088, 8090,
+                    8888, 8899, 9000, 443, 8443
+                ).filter { it > 0 }.distinct()
+                val candidateRtsp = listOf(device.rtspPort, 554, 8554).filter { it > 0 }.distinct()
+                val candidateSdk = listOf(device.sdkPort, 37777, 8000, 34567).filter { it > 0 }.distinct()
+                val allTargets = (candidateWeb + candidateRtsp + candidateSdk).distinct()
+
+                val open = checkRecorderPorts(checkIp, allTargets)
                 if (open.isNotEmpty()) {
                     synchronized(discoveredMap) {
                         val currentEntry = discoveredMap.entries.firstOrNull { (_, dev) -> dev.ipv4Address == checkIp }
                         if (currentEntry != null) {
-                            val updated = currentEntry.value.copy(verifiedOpenPorts = currentEntry.value.verifiedOpenPorts + open)
+                            val current = currentEntry.value
+                            // Automatically find real open HTTP web port if changed
+                            val detectedWeb = open.firstOrNull { it in candidateWeb && it != 554 && it != 37777 && it != 34567 && it != 8554 }
+                            val updatedHttpPort = if (detectedWeb != null && (!open.contains(current.httpPort) || current.httpPort == 80)) detectedWeb else current.httpPort
+                            val updatedRtspPort = if (open.contains(554)) 554 else if (open.contains(8554)) 8554 else current.rtspPort
+                            val updatedSdkPort = if (open.contains(37777)) 37777 else if (open.contains(8000) && current.brand == DeviceBrand.HIKVISION) 8000 else if (open.contains(34567)) 34567 else current.sdkPort
+
+                            val updated = current.copy(
+                                httpPort = updatedHttpPort,
+                                rtspPort = updatedRtspPort,
+                                sdkPort = updatedSdkPort,
+                                verifiedOpenPorts = current.verifiedOpenPorts + open
+                            )
                             discoveredMap[currentEntry.key] = updated
                             _devices.value = discoveredMap.values.filter {
                                 it.category == DeviceCategory.CAMERA || it.category == DeviceCategory.NVR || it.category == DeviceCategory.DVR

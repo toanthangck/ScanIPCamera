@@ -112,6 +112,7 @@ class HikvisionSADPScanner {
             var ipv4Gateway = ""
             var ipv4Port = 8000
             var httpPort = 80
+            var rtspPort = 554
             var mac = ""
             var softwareVersion = ""
             var isActivated = true
@@ -123,19 +124,20 @@ class HikvisionSADPScanner {
                     XmlPullParser.TEXT -> {
                         val text = parser.text.trim()
                         if (text.isNotEmpty()) {
-                            when (currentTag) {
-                                "DeviceDescription" -> deviceDescription = text
-                                "DeviceType" -> deviceType = text
-                                "DeviceSN" -> deviceSn = text
-                                "IPv4Address" -> ipv4Address = text
-                                "IPv4SubnetMask" -> ipv4SubnetMask = text
-                                "IPv4Gateway" -> ipv4Gateway = text
-                                "IPv4Port" -> ipv4Port = text.toIntOrNull() ?: 8000
-                                "HttpPort" -> httpPort = text.toIntOrNull() ?: 80
-                                "MAC" -> mac = text.uppercase().replace("-", ":")
-                                "SoftwareVersion" -> softwareVersion = text
-                                "Activated" -> isActivated = text.equals("true", ignoreCase = true)
-                                "DHCP" -> isDhcp = text.equals("true", ignoreCase = true)
+                            when (currentTag.lowercase()) {
+                                "devicedescription" -> deviceDescription = text
+                                "devicetype" -> deviceType = text
+                                "devicesn" -> deviceSn = text
+                                "ipv4address" -> ipv4Address = text
+                                "ipv4subnetmask" -> ipv4SubnetMask = text
+                                "ipv4gateway" -> ipv4Gateway = text
+                                "ipv4port", "sdkport" -> ipv4Port = text.toIntOrNull() ?: 8000
+                                "httpport", "webport" -> httpPort = text.toIntOrNull() ?: 80
+                                "rtspport" -> rtspPort = text.toIntOrNull() ?: 554
+                                "mac" -> mac = text.uppercase().replace("-", ":")
+                                "softwareversion" -> softwareVersion = text
+                                "activated" -> isActivated = text.equals("true", ignoreCase = true)
+                                "dhcp" -> isDhcp = text.equals("true", ignoreCase = true)
                             }
                         }
                     }
@@ -168,6 +170,7 @@ class HikvisionSADPScanner {
                 isActivated = isActivated,
                 httpPort = httpPort,
                 sdkPort = ipv4Port,
+                rtspPort = rtspPort,
                 firmwareVersion = softwareVersion,
                 rawProtocol = "SADP"
             )

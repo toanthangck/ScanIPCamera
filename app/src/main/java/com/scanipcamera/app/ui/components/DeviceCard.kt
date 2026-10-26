@@ -66,30 +66,40 @@ fun DeviceCard(
         mutableStateOf(device.verifiedOpenPorts)
     }
 
-    // Tự động kiểm tra cổng đầu ghi khi phát hiện
-    LaunchedEffect(device.ipv4Address, isRecorder) {
-        if (isRecorder && device.ipv4Address.isNotBlank()) {
+    var activeHttpPort by remember(device.httpPort) {
+        mutableStateOf(device.httpPort)
+    }
+
+    // Tự động kiểm tra cổng đầu ghi và phát hiện port web bị đổi
+    LaunchedEffect(device.ipv4Address) {
+        if (device.ipv4Address.isNotBlank()) {
             withContext(Dispatchers.IO) {
-                val targets = listOfNotNull(
-                    device.httpPort.takeIf { it > 0 },
-                    (if (device.rtspPort > 0) device.rtspPort else 554),
-                    device.sdkPort.takeIf { it > 0 },
-                    80, 554,
-                    if (device.brand == DeviceBrand.HIKVISION) 8000 else null,
-                    if (device.brand == DeviceBrand.DAHUA || device.brand == DeviceBrand.KBVISION) 37777 else null
-                ).distinct()
+                val candidateWeb = listOf(
+                    device.httpPort,
+                    80, 81, 82, 83, 84, 85, 88, 89,
+                    8000, 8008, 8080, 8081, 8082, 8085, 8088, 8090,
+                    8888, 8899, 9000, 443, 8443
+                ).filter { it > 0 }.distinct()
+                val candidateRtsp = listOf(device.rtspPort, 554, 8554).filter { it > 0 }.distinct()
+                val candidateSdk = listOf(device.sdkPort, 37777, 8000, 34567).filter { it > 0 }.distinct()
+                val allTargets = (candidateWeb + candidateRtsp + candidateSdk).distinct()
 
                 val verified = mutableSetOf<Int>()
-                targets.forEach { port ->
+                allTargets.forEach { port ->
                     try {
                         Socket().use { s ->
-                            s.connect(InetSocketAddress(device.ipv4Address, port), 350)
+                            s.connect(InetSocketAddress(device.ipv4Address, port), 250)
                             verified.add(port)
                         }
                     } catch (_: Exception) {}
                 }
                 if (verified.isNotEmpty()) {
                     openPorts = openPorts + verified
+                    // Nếu phát hiện port web thực tế đã đổi khác với port cũ (hoặc port cũ không mở)
+                    val foundWeb = verified.firstOrNull { it in candidateWeb && it != 554 && it != 37777 && it != 34567 && it != 8554 }
+                    if (foundWeb != null && (foundWeb != activeHttpPort || !verified.contains(device.httpPort))) {
+                        activeHttpPort = foundWeb
+                    }
                 }
             }
         }
@@ -351,7 +361,7 @@ fun DeviceCard(
                 ) {
                     val rtspPortVal = if (device.rtspPort > 0) device.rtspPort else 554
                     val isExplicitOnvif = device.brand == DeviceBrand.ONVIF || device.rawProtocol == "ONVIF"
-                    val isWebOpen = openPorts.contains(device.httpPort) || openPorts.contains(80) || openPorts.contains(8080)
+                    val isWebOpen = openPorts.contains(activeHttpPort) || openPorts.contains(device.httpPort) || openPorts.contains(80) || openPorts.contains(8080)
                     val isRtspOpen = openPorts.contains(rtspPortVal) || openPorts.contains(554)
                     val isSdkOpen = (device.sdkPort > 0 && openPorts.contains(device.sdkPort)) ||
                             (device.brand == DeviceBrand.DAHUA && openPorts.contains(37777)) ||
@@ -361,7 +371,7 @@ fun DeviceCard(
                     val webBlinking = isRecorder && isWebOpen
                     Surface(
                         onClick = {
-                            val url = "http://${device.ipv4Address}:${device.httpPort}"
+                            val url = "http://${device.ipv4Address}:$activeHttpPort"
                             val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
                             runCatching { context.startActivity(intent) }
                                 .onFailure { Toast.makeText(context, "Không mở được trình duyệt", Toast.LENGTH_SHORT).show() }
@@ -375,7 +385,7 @@ fun DeviceCard(
                         modifier = if (webBlinking) Modifier.graphicsLayer { alpha = blinkAlpha } else Modifier
                     ) {
                         Text(
-                            text = "Web:${device.httpPort}",
+                            text = "Web:$activeHttpPort",
                             fontSize = 8.5.sp,
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,

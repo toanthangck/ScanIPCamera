@@ -18,7 +18,10 @@ class SubnetIpScanner {
 
     companion object {
         private const val TAG = "SubnetIpScanner"
-        private val CCTV_PORTS = intArrayOf(554, 8000, 37777, 34567, 8899, 80, 8080)
+        private val CCTV_PORTS = intArrayOf(
+            80, 81, 88, 8080, 8081, 8888, 554, 8000, 37777, 34567, 8899,
+            82, 83, 85, 89, 8008, 8088, 8082, 8085, 8090, 9000, 443, 8443, 8554
+        )
         private const val CONNECT_TIMEOUT_MS = 250
         private const val MAX_CONCURRENCY = 30
 
@@ -72,7 +75,13 @@ class SubnetIpScanner {
                             val probed = DeviceDeepProbe.probeDevice(targetIp, openPorts)
                             if (probed != null && (probed.brand != DeviceBrand.UNKNOWN || probed.macAddress.isNotBlank())) {
                                 if (probed.category != DeviceCategory.OTHER) {
-                                    onDeviceFound(probed.copy(verifiedOpenPorts = openPorts.toSet()))
+                                    val webCandidates = listOf(80, 81, 88, 8080, 8081, 8888, 82, 83, 85, 89, 8008, 8088, 8082, 8085, 8090, 9000, 443, 8443)
+                                    val detectedWeb = openPorts.firstOrNull { it in webCandidates } ?: probed.httpPort
+                                    val realWebPort = if (detectedWeb > 0 && (!openPorts.contains(probed.httpPort) || probed.httpPort == 80)) detectedWeb else probed.httpPort
+                                    onDeviceFound(probed.copy(
+                                        verifiedOpenPorts = openPorts.toSet(),
+                                        httpPort = realWebPort
+                                    ))
                                 }
                             } else {
                                 val mac = getMacFromArp(targetIp)
@@ -95,6 +104,21 @@ class SubnetIpScanner {
                                     return@withPermit
                                 }
 
+                                val webPortCandidates = listOf(80, 81, 88, 8080, 8081, 8888, 82, 83, 85, 89, 8008, 8088, 8082, 8085, 8090, 9000, 443, 8443)
+                                val detectedHttp = openPorts.firstOrNull { it in webPortCandidates }
+                                    ?: (if (openPorts.contains(8000) && brand != DeviceBrand.HIKVISION) 8000 else null)
+                                    ?: openPorts.firstOrNull { it != 554 && it != 37777 && it != 34567 && it != 8899 && it != 8554 }
+                                    ?: 80
+
+                                val detectedRtsp = if (openPorts.contains(554)) 554 else if (openPorts.contains(8554)) 8554 else 0
+                                val detectedSdk = when {
+                                    openPorts.contains(37777) -> 37777
+                                    openPorts.contains(8000) && brand == DeviceBrand.HIKVISION -> 8000
+                                    openPorts.contains(34567) -> 34567
+                                    brand == DeviceBrand.DAHUA || brand == DeviceBrand.KBVISION -> if (openPorts.contains(37777)) 37777 else 0
+                                    else -> 0
+                                }
+
                                 val device = CameraDevice(
                                     id = if (mac.isNotBlank()) mac else targetIp,
                                     brand = brand,
@@ -103,9 +127,9 @@ class SubnetIpScanner {
                                     model = modelName,
                                     macAddress = mac,
                                     ipv4Address = targetIp,
-                                    httpPort = if (openPorts.contains(80)) 80 else if (openPorts.contains(8080)) 8080 else openPorts.first(),
-                                    sdkPort = if (openPorts.contains(37777)) 37777 else if (openPorts.contains(8000) && brand == DeviceBrand.HIKVISION) 8000 else if (openPorts.contains(34567)) 34567 else 0,
-                                    rtspPort = if (openPorts.contains(554)) 554 else 0,
+                                    httpPort = detectedHttp,
+                                    sdkPort = detectedSdk,
+                                    rtspPort = detectedRtsp,
                                     rawProtocol = "PING/PORT",
                                     verifiedOpenPorts = openPorts.toSet()
                                 )

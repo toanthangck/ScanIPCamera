@@ -42,14 +42,14 @@ object DeviceDeepProbe {
         }
 
         // 3. Try Dahua HTTP APIs (Port 80 or 8080)
-        val dahuaHttpDevice = probeDahuaHttp(ip)
+        val dahuaHttpDevice = probeDahuaHttp(ip, knownPorts)
         if (dahuaHttpDevice != null && (dahuaHttpDevice.macAddress.isNotBlank() || dahuaHttpDevice.serialNumber.isNotBlank())) {
             // Merge with any UDP fields found
             return@withContext mergeDevices(dahuaDevice, dahuaHttpDevice)
         }
 
         // 4. Try Hikvision ISAPI (Port 80 or 8080)
-        val hikHttpDevice = probeHikvisionHttp(ip)
+        val hikHttpDevice = probeHikvisionHttp(ip, knownPorts)
         if (hikHttpDevice != null && (hikHttpDevice.macAddress.isNotBlank() || hikHttpDevice.serialNumber.isNotBlank())) {
             return@withContext mergeDevices(hikDevice, hikHttpDevice)
         }
@@ -133,8 +133,8 @@ object DeviceDeepProbe {
     /**
      * Query Dahua HTTP magicBox & netApp endpoints.
      */
-    private fun probeDahuaHttp(ip: String): CameraDevice? {
-        val ports = listOf(80, 8080)
+    private fun probeDahuaHttp(ip: String, candidatePorts: List<Int> = emptyList()): CameraDevice? {
+        val ports = (candidatePorts + listOf(80, 81, 88, 8080, 8081, 8888)).distinct()
         for (port in ports) {
             try {
                 // 1. Get System Info (Model & Serial)
@@ -199,8 +199,8 @@ object DeviceDeepProbe {
     /**
      * Query Hikvision ISAPI deviceInfo endpoint.
      */
-    private fun probeHikvisionHttp(ip: String): CameraDevice? {
-        val ports = listOf(80, 8080)
+    private fun probeHikvisionHttp(ip: String, candidatePorts: List<Int> = emptyList()): CameraDevice? {
+        val ports = (candidatePorts + listOf(80, 81, 88, 8080, 8081, 8888)).distinct()
         for (port in ports) {
             try {
                 val url = URL("http://$ip:$port/ISAPI/System/deviceInfo")
