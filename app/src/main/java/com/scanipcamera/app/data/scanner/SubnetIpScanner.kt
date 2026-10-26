@@ -18,10 +18,7 @@ class SubnetIpScanner {
 
     companion object {
         private const val TAG = "SubnetIpScanner"
-        private val CCTV_PORTS = intArrayOf(
-            80, 81, 88, 8080, 8081, 8888, 554, 8000, 37777, 34567, 8899,
-            82, 83, 85, 89, 8008, 8088, 8082, 8085, 8090, 9000, 443, 8443, 8554
-        )
+        private val CCTV_PORTS = PortScannerUtils.COMMON_CCTV_PORTS
         private const val CONNECT_TIMEOUT_MS = 250
         private const val MAX_CONCURRENCY = 30
 
@@ -75,8 +72,9 @@ class SubnetIpScanner {
                             val probed = DeviceDeepProbe.probeDevice(targetIp, openPorts)
                             if (probed != null && (probed.brand != DeviceBrand.UNKNOWN || probed.macAddress.isNotBlank())) {
                                 if (probed.category != DeviceCategory.OTHER) {
-                                    val webCandidates = listOf(80, 81, 88, 8080, 8081, 8888, 82, 83, 85, 89, 8008, 8088, 8082, 8085, 8090, 9000, 443, 8443)
-                                    val detectedWeb = openPorts.firstOrNull { it in webCandidates } ?: probed.httpPort
+                                    val detectedWeb = openPorts.firstOrNull { PortScannerUtils.isHttpPort(targetIp, it) }
+                                        ?: openPorts.firstOrNull { it in PortScannerUtils.COMMON_CCTV_PORTS && it != 554 && it != 8554 && it != 37777 && it != 34567 }
+                                        ?: probed.httpPort
                                     val realWebPort = if (detectedWeb > 0 && (!openPorts.contains(probed.httpPort) || probed.httpPort == 80)) detectedWeb else probed.httpPort
                                     onDeviceFound(probed.copy(
                                         verifiedOpenPorts = openPorts.toSet(),
@@ -104,8 +102,8 @@ class SubnetIpScanner {
                                     return@withPermit
                                 }
 
-                                val webPortCandidates = listOf(80, 81, 88, 8080, 8081, 8888, 82, 83, 85, 89, 8008, 8088, 8082, 8085, 8090, 9000, 443, 8443)
-                                val detectedHttp = openPorts.firstOrNull { it in webPortCandidates }
+                                val detectedHttp = openPorts.firstOrNull { PortScannerUtils.isHttpPort(targetIp, it) }
+                                    ?: openPorts.firstOrNull { it in PortScannerUtils.COMMON_CCTV_PORTS && it != 554 && it != 8554 && it != 37777 && it != 34567 }
                                     ?: (if (openPorts.contains(8000) && brand != DeviceBrand.HIKVISION) 8000 else null)
                                     ?: openPorts.firstOrNull { it != 554 && it != 37777 && it != 34567 && it != 8899 && it != 8554 }
                                     ?: 80

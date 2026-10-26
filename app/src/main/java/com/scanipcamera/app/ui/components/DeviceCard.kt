@@ -31,6 +31,7 @@ import com.scanipcamera.app.data.model.CameraDevice
 import com.scanipcamera.app.data.model.DeviceBrand
 import com.scanipcamera.app.data.model.DeviceCategory
 import com.scanipcamera.app.data.network.NetworkUtils
+import com.scanipcamera.app.data.scanner.PortScannerUtils
 import com.scanipcamera.app.ui.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -70,35 +71,21 @@ fun DeviceCard(
         mutableStateOf(device.httpPort)
     }
 
-    // Tự động kiểm tra cổng đầu ghi và phát hiện port web bị đổi
+    // Tự động quét dải cổng 80..9000 trên thiết bị để phát hiện chính xác port web
     LaunchedEffect(device.ipv4Address) {
         if (device.ipv4Address.isNotBlank()) {
             withContext(Dispatchers.IO) {
-                val candidateWeb = listOf(
-                    device.httpPort,
-                    80, 81, 82, 83, 84, 85, 88, 89,
-                    8000, 8008, 8080, 8081, 8082, 8085, 8088, 8090,
-                    8888, 8899, 9000, 443, 8443
-                ).filter { it > 0 }.distinct()
-                val candidateRtsp = listOf(device.rtspPort, 554, 8554).filter { it > 0 }.distinct()
-                val candidateSdk = listOf(device.sdkPort, 37777, 8000, 34567).filter { it > 0 }.distinct()
-                val allTargets = (candidateWeb + candidateRtsp + candidateSdk).distinct()
+                val open = PortScannerUtils.scanPortsRange(device.ipv4Address, 80, 9000).toSet()
+                if (open.isNotEmpty()) {
+                    openPorts = openPorts + open
+                    // Tìm chính xác cổng web thực sự trả về HTTP (hỗ trợ bất kỳ port nào từ 80-9000, e.g. 8089)
+                    val httpCandidates = open.filter { it != 554 && it != 8554 && it != 37777 && it != 34567 }
+                    val detectedWeb = httpCandidates.firstOrNull { PortScannerUtils.isHttpPort(device.ipv4Address, it) }
+                        ?: (if (open.contains(device.httpPort)) device.httpPort else httpCandidates.firstOrNull())
+                        ?: activeHttpPort
 
-                val verified = mutableSetOf<Int>()
-                allTargets.forEach { port ->
-                    try {
-                        Socket().use { s ->
-                            s.connect(InetSocketAddress(device.ipv4Address, port), 250)
-                            verified.add(port)
-                        }
-                    } catch (_: Exception) {}
-                }
-                if (verified.isNotEmpty()) {
-                    openPorts = openPorts + verified
-                    // Nếu phát hiện port web thực tế đã đổi khác với port cũ (hoặc port cũ không mở)
-                    val foundWeb = verified.firstOrNull { it in candidateWeb && it != 554 && it != 37777 && it != 34567 && it != 8554 }
-                    if (foundWeb != null && (foundWeb != activeHttpPort || !verified.contains(device.httpPort))) {
-                        activeHttpPort = foundWeb
+                    if (detectedWeb != activeHttpPort) {
+                        activeHttpPort = detectedWeb
                     }
                 }
             }
