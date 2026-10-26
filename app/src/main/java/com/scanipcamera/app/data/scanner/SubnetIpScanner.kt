@@ -72,7 +72,7 @@ class SubnetIpScanner {
                             val probed = DeviceDeepProbe.probeDevice(targetIp, openPorts)
                             if (probed != null && (probed.brand != DeviceBrand.UNKNOWN || probed.macAddress.isNotBlank())) {
                                 if (probed.category != DeviceCategory.OTHER) {
-                                    onDeviceFound(probed)
+                                    onDeviceFound(probed.copy(verifiedOpenPorts = openPorts.toSet()))
                                 }
                             } else {
                                 val mac = getMacFromArp(targetIp)
@@ -106,7 +106,8 @@ class SubnetIpScanner {
                                     httpPort = if (openPorts.contains(80)) 80 else if (openPorts.contains(8080)) 8080 else openPorts.first(),
                                     sdkPort = if (openPorts.contains(37777)) 37777 else if (openPorts.contains(8000) && brand == DeviceBrand.HIKVISION) 8000 else if (openPorts.contains(34567)) 34567 else 0,
                                     rtspPort = if (openPorts.contains(554)) 554 else 0,
-                                    rawProtocol = "PING/PORT"
+                                    rawProtocol = "PING/PORT",
+                                    verifiedOpenPorts = openPorts.toSet()
                                 )
                                 onDeviceFound(device)
                             }

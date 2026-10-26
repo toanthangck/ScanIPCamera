@@ -97,7 +97,15 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
                         device.serialNumber.lowercase().contains(trimmed)
             }
             matchBrand && matchCategory && matchQuery
-        }
+        }.sortedWith(
+            compareBy<CameraDevice> { dev ->
+                // Ưu tiên đầu ghi (NVR/DVR) lên trước camera
+                if (dev.category == DeviceCategory.NVR || dev.category == DeviceCategory.DVR) 0 else 1
+            }.thenBy { dev ->
+                // Sắp xếp địa chỉ IP từ thấp đến cao (theo giá trị số thực tế)
+                ipToLong(dev.ipv4Address)
+            }
+        )
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     // Detect conflicting IP addresses (more than 1 device with same IP in subnet)
@@ -503,5 +511,20 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
             DeviceExportHelper.generateTextReport(currentList)
         }
         DeviceExportHelper.shareReport(getApplication(), report)
+    }
+
+    companion object {
+        fun ipToLong(ip: String): Long {
+            val parts = ip.trim().split(".")
+            if (parts.size != 4) return Long.MAX_VALUE
+            return try {
+                (parts[0].toLong() shl 24) or
+                (parts[1].toLong() shl 16) or
+                (parts[2].toLong() shl 8) or
+                parts[3].toLong()
+            } catch (_: Exception) {
+                Long.MAX_VALUE
+            }
+        }
     }
 }

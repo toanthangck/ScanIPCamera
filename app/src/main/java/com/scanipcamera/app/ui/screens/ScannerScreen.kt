@@ -504,13 +504,60 @@ fun ScannerScreen(
                 }
             }
 
-            // Progress indicator
+            // Progress indicator (Hiển thị tiến trình quét cổng IP từ 1 đến 254)
             AnimatedVisibility(visible = isScanning) {
-                LinearProgressIndicator(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 10.dp, vertical = 2.dp)
-                )
+                ) {
+                    val progressRatio = scanProgress?.let { (cur, total) ->
+                        if (total > 0) (cur.toFloat() / total.toFloat()).coerceIn(0f, 1f) else null
+                    }
+                    if (progressRatio != null) {
+                        LinearProgressIndicator(
+                            progress = { progressRatio },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp)),
+                            color = MaterialTheme.colorScheme.primary,
+                            trackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                        )
+                    } else {
+                        LinearProgressIndicator(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(4.dp)
+                                .clip(RoundedCornerShape(2.dp))
+                        )
+                    }
+
+                    val currentCount = scanProgress?.first ?: 0
+                    val totalCount = scanProgress?.second ?: 254
+                    val basePrefix = wifiInfo.ipAddress.substringBeforeLast(".", "192.168.1")
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "Đang quét cổng: $basePrefix.1 ➔ .$totalCount",
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = "$currentCount/$totalCount IP (${if (totalCount > 0) (currentCount * 100 / totalCount) else 0}%)",
+                            fontSize = 10.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
             }
 
             // Search Bar (Toggleable to save maximum vertical space)

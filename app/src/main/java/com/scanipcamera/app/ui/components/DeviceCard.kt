@@ -6,11 +6,10 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.widget.Toast
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -21,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -32,6 +32,10 @@ import com.scanipcamera.app.data.model.DeviceBrand
 import com.scanipcamera.app.data.model.DeviceCategory
 import com.scanipcamera.app.data.network.NetworkUtils
 import com.scanipcamera.app.ui.theme.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.net.InetSocketAddress
+import java.net.Socket
 
 @Composable
 fun DeviceCard(
@@ -57,6 +61,51 @@ fun DeviceCard(
     }
 
     val isRecorder = (device.category == DeviceCategory.NVR || device.category == DeviceCategory.DVR)
+
+    var openPorts by remember(device.ipv4Address, device.verifiedOpenPorts) {
+        mutableStateOf(device.verifiedOpenPorts)
+    }
+
+    // Tự động kiểm tra cổng đầu ghi khi phát hiện
+    LaunchedEffect(device.ipv4Address, isRecorder) {
+        if (isRecorder && device.ipv4Address.isNotBlank()) {
+            withContext(Dispatchers.IO) {
+                val targets = listOfNotNull(
+                    device.httpPort.takeIf { it > 0 },
+                    (if (device.rtspPort > 0) device.rtspPort else 554),
+                    device.sdkPort.takeIf { it > 0 },
+                    80, 554,
+                    if (device.brand == DeviceBrand.HIKVISION) 8000 else null,
+                    if (device.brand == DeviceBrand.DAHUA || device.brand == DeviceBrand.KBVISION) 37777 else null
+                ).distinct()
+
+                val verified = mutableSetOf<Int>()
+                targets.forEach { port ->
+                    try {
+                        Socket().use { s ->
+                            s.connect(InetSocketAddress(device.ipv4Address, port), 350)
+                            verified.add(port)
+                        }
+                    } catch (_: Exception) {}
+                }
+                if (verified.isNotEmpty()) {
+                    openPorts = openPorts + verified
+                }
+            }
+        }
+    }
+
+    // Hiệu ứng nhấp nháy cho cổng đầu ghi được mở
+    val infiniteTransition = rememberInfiniteTransition(label = "nvr_port_blink")
+    val blinkAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.25f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 550, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "blink_alpha"
+    )
 
     Card(
         modifier = modifier.fillMaxWidth(),
@@ -145,7 +194,7 @@ fun DeviceCard(
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                    .padding(horizontal = 7.dp, vertical = 2.dp)
             ) {
             // ROW 1: BRAND BADGE + FULL MODEL NAME + STATUS BADGES
             Row(
@@ -251,7 +300,7 @@ fun DeviceCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(2.dp))
+            Spacer(modifier = Modifier.height(1.dp))
 
             // ROW 2: IP ADDRESS (BÊN TRÁI) + CÁC CỔNG GỌN GÀNG (BÊN PHẢI - VỪA KHÍT 1 MÀN HÌNH, KHÔNG KÉO TAY)
             Row(
@@ -300,7 +349,16 @@ fun DeviceCard(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
-                    // Cổng Web (Màu xanh dương)
+                    val rtspPortVal = if (device.rtspPort > 0) device.rtspPort else 554
+                    val isExplicitOnvif = device.brand == DeviceBrand.ONVIF || device.rawProtocol == "ONVIF"
+                    val isWebOpen = openPorts.contains(device.httpPort) || openPorts.contains(80) || openPorts.contains(8080)
+                    val isRtspOpen = openPorts.contains(rtspPortVal) || openPorts.contains(554)
+                    val isSdkOpen = (device.sdkPort > 0 && openPorts.contains(device.sdkPort)) ||
+                            (device.brand == DeviceBrand.DAHUA && openPorts.contains(37777)) ||
+                            (device.brand == DeviceBrand.HIKVISION && openPorts.contains(8000))
+
+                    // Cổng Web (Màu xanh dương - nhấp nháy nếu là đầu ghi và cổng mở)
+                    val webBlinking = isRecorder && isWebOpen
                     Surface(
                         onClick = {
                             val url = "http://${device.ipv4Address}:${device.httpPort}"
@@ -308,9 +366,13 @@ fun DeviceCard(
                             runCatching { context.startActivity(intent) }
                                 .onFailure { Toast.makeText(context, "Không mở được trình duyệt", Toast.LENGTH_SHORT).show() }
                         },
-                        color = Color(0xFF2563EB).copy(alpha = 0.12f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2563EB).copy(alpha = 0.5f)),
-                        shape = RoundedCornerShape(4.dp)
+                        color = Color(0xFF2563EB).copy(alpha = if (webBlinking) 0.22f else 0.12f),
+                        border = androidx.compose.foundation.BorderStroke(
+                            width = if (webBlinking) 1.2.dp else 0.8.dp,
+                            color = Color(0xFF2563EB).copy(alpha = if (webBlinking) blinkAlpha else 0.5f)
+                        ),
+                        shape = RoundedCornerShape(4.dp),
+                        modifier = if (webBlinking) Modifier.graphicsLayer { alpha = blinkAlpha } else Modifier
                     ) {
                         Text(
                             text = "Web:${device.httpPort}",
@@ -322,14 +384,17 @@ fun DeviceCard(
                         )
                     }
 
-                    // Cổng RTSP / ONVIF (Màu tím)
-                    val rtspPortVal = if (device.rtspPort > 0) device.rtspPort else 554
-                    val isExplicitOnvif = device.brand == DeviceBrand.ONVIF || device.rawProtocol == "ONVIF"
+                    // Cổng RTSP / ONVIF (Màu tím - nhấp nháy nếu là đầu ghi và cổng mở)
+                    val rtspBlinking = isRecorder && isRtspOpen
                     Surface(
                         onClick = onRtspClick,
-                        color = Color(0xFF8B5CF6).copy(alpha = 0.12f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF8B5CF6).copy(alpha = 0.5f)),
-                        shape = RoundedCornerShape(4.dp)
+                        color = Color(0xFF8B5CF6).copy(alpha = if (rtspBlinking) 0.22f else 0.12f),
+                        border = androidx.compose.foundation.BorderStroke(
+                            width = if (rtspBlinking) 1.2.dp else 0.8.dp,
+                            color = Color(0xFF8B5CF6).copy(alpha = if (rtspBlinking) blinkAlpha else 0.5f)
+                        ),
+                        shape = RoundedCornerShape(4.dp),
+                        modifier = if (rtspBlinking) Modifier.graphicsLayer { alpha = blinkAlpha } else Modifier
                     ) {
                         Text(
                             text = if (isExplicitOnvif) "ONVIF:$rtspPortVal" else "RTSP:$rtspPortVal",
@@ -341,13 +406,18 @@ fun DeviceCard(
                         )
                     }
 
-                    // Cổng Dịch vụ camera (Màu cam)
+                    // Cổng Dịch vụ camera (Màu cam - nhấp nháy nếu là đầu ghi và cổng mở)
                     if (device.sdkPort > 0) {
+                        val sdkBlinking = isRecorder && isSdkOpen
                         Surface(
                             onClick = onDiagnosticClick,
-                            color = Color(0xFFEA580C).copy(alpha = 0.12f),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEA580C).copy(alpha = 0.5f)),
-                            shape = RoundedCornerShape(4.dp)
+                            color = Color(0xFFEA580C).copy(alpha = if (sdkBlinking) 0.22f else 0.12f),
+                            border = androidx.compose.foundation.BorderStroke(
+                                width = if (sdkBlinking) 1.2.dp else 0.8.dp,
+                                color = Color(0xFFEA580C).copy(alpha = if (sdkBlinking) blinkAlpha else 0.5f)
+                            ),
+                            shape = RoundedCornerShape(4.dp),
+                            modifier = if (sdkBlinking) Modifier.graphicsLayer { alpha = blinkAlpha } else Modifier
                         ) {
                             Text(
                                 text = "D.Vụ:${device.sdkPort}",
@@ -362,7 +432,7 @@ fun DeviceCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(2.dp))
+            Spacer(modifier = Modifier.height(1.dp))
 
             // ROW 3: MAC ADDRESS + SERIAL NUMBER
             Row(

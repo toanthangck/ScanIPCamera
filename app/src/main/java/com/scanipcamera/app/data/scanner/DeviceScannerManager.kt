@@ -8,11 +8,15 @@ import com.scanipcamera.app.data.model.DeviceCategory
 import com.scanipcamera.app.data.network.NetworkUtils
 import com.scanipcamera.app.data.network.WifiNetworkInfo
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.net.InetSocketAddress
+import java.net.Socket
 
 enum class ScanMode {
     UDP_DISCOVERY, // SADP + Dahua + ONVIF + Smart Subnet Probe
@@ -94,7 +98,8 @@ class DeviceScannerManager(private val context: Context) {
                     channelCount = mergedChannels,
                     rawProtocol = mergedProtocol,
                     httpPort = if (device.httpPort > 0) device.httpPort else existing.httpPort,
-                    sdkPort = if (device.sdkPort > 0) device.sdkPort else existing.sdkPort
+                    sdkPort = if (device.sdkPort > 0) device.sdkPort else existing.sdkPort,
+                    verifiedOpenPorts = existing.verifiedOpenPorts + device.verifiedOpenPorts
                 )
 
                 if (existingKey != finalKey) {
@@ -123,6 +128,47 @@ class DeviceScannerManager(private val context: Context) {
                 } catch (ignored: Exception) {}
             }
         }
+
+        // Mặc định kiểm tra cổng trên đầu ghi (NVR/DVR) để nhấp nháy cổng được mở
+        val isRecorder = (device.category == DeviceCategory.NVR || device.category == DeviceCategory.DVR)
+        if (isRecorder && device.ipv4Address.isNotBlank() && scope != null) {
+            val checkIp = device.ipv4Address
+            scope.launch {
+                val open = checkRecorderPorts(checkIp, listOf(device.httpPort, device.rtspPort, device.sdkPort, 80, 554, 8000, 37777, 34567))
+                if (open.isNotEmpty()) {
+                    synchronized(discoveredMap) {
+                        val currentEntry = discoveredMap.entries.firstOrNull { (_, dev) -> dev.ipv4Address == checkIp }
+                        if (currentEntry != null) {
+                            val updated = currentEntry.value.copy(verifiedOpenPorts = currentEntry.value.verifiedOpenPorts + open)
+                            discoveredMap[currentEntry.key] = updated
+                            _devices.value = discoveredMap.values.filter {
+                                it.category == DeviceCategory.CAMERA || it.category == DeviceCategory.NVR || it.category == DeviceCategory.DVR
+                            }.toList()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun checkRecorderPorts(ip: String, candidatePorts: List<Int>): Set<Int> = withContext(Dispatchers.IO) {
+        val targets = candidatePorts.filter { it > 0 }.distinct()
+        val open = mutableSetOf<Int>()
+        val jobs = targets.map { port ->
+            launch {
+                var socket: Socket? = null
+                try {
+                    socket = Socket()
+                    socket.connect(InetSocketAddress(ip, port), 400)
+                    synchronized(open) { open.add(port) }
+                } catch (_: Exception) {
+                } finally {
+                    try { socket?.close() } catch (_: Exception) {}
+                }
+            }
+        }
+        jobs.forEach { it.join() }
+        open
     }
 
     suspend fun startScan(timeoutMs: Int = 4000, clearExisting: Boolean = true) {
@@ -174,7 +220,9 @@ class DeviceScannerManager(private val context: Context) {
                     if (currentIp.isNotBlank()) {
                         subnetScanner.scanSubnet(
                             localIp = currentIp,
-                            onProgress = { _, _ -> },
+                            onProgress = { current, total ->
+                                _scanProgress.value = Pair(current, total)
+                            },
                             onDeviceFound = { device ->
                                 addOrUpdateDevice(device, scope)
                             }
@@ -186,6 +234,7 @@ class DeviceScannerManager(private val context: Context) {
             Log.e(TAG, "Scan orchestration error", e)
         } finally {
             networkUtils.releaseMulticastLock()
+            _scanProgress.value = null
             _isScanning.value = false
         }
     }

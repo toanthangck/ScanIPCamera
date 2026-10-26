@@ -30,7 +30,8 @@ data class CameraDevice(
     val customName: String = "",
     val installLocation: String = "", // e.g. "Cổng chính", "Phòng khách"
     val handoverUser: String = "admin",
-    val handoverPass: String = "admin123"
+    val handoverPass: String = "admin123",
+    val verifiedOpenPorts: Set<Int> = emptySet()
 ) {
     companion object {
         fun detectCategoryAndChannels(model: String, description: String = ""): Pair<DeviceCategory, Int> {
