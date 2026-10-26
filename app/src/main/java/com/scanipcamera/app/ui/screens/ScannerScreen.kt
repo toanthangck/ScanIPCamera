@@ -444,9 +444,10 @@ fun ScannerScreen(
                         )
                         if (wifiInfo.ipAddress.isNotBlank()) {
                             Text(
-                                text = " (${wifiInfo.ipAddress})",
-                                fontSize = 10.sp,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                text = " (IP máy bạn: ${wifiInfo.ipAddress})",
+                                fontSize = 10.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
                                 maxLines = 1
                             )
                         }
@@ -505,9 +506,10 @@ fun ScannerScreen(
                                         fontSize = 13.sp
                                     )
                                     Text(
-                                        text = "IP: ${wifiInfo.ipAddress.ifEmpty { "N/A" }} | GW: ${wifiInfo.gateway.ifEmpty { "N/A" }}",
+                                        text = "IP máy bạn: ${wifiInfo.ipAddress.ifEmpty { "N/A" }} | Gateway: ${wifiInfo.gateway.ifEmpty { "N/A" }}",
                                         fontSize = 11.sp,
                                         fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.SemiBold,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
@@ -569,96 +571,13 @@ fun ScannerScreen(
                 }
             }
 
-            // Scan Mode Selector (Compact 28dp segmented buttons)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Surface(
-                    onClick = { viewModel.setScanMode(ScanMode.UDP_DISCOVERY) },
-                    shape = RoundedCornerShape(6.dp),
-                    color = if (scanMode == ScanMode.UDP_DISCOVERY) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    border = androidx.compose.foundation.BorderStroke(
-                        1.dp,
-                        if (scanMode == ScanMode.UDP_DISCOVERY) MaterialTheme.colorScheme.primary else Color.Transparent
-                    ),
-                    modifier = Modifier.weight(1f).height(28.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxSize().padding(horizontal = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            Icons.Default.Sensors,
-                            contentDescription = null,
-                            modifier = Modifier.size(13.dp),
-                            tint = if (scanMode == ScanMode.UDP_DISCOVERY) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            "Đa giao thức (SADP/Dahua/ONVIF)",
-                            fontSize = 10.sp,
-                            fontWeight = if (scanMode == ScanMode.UDP_DISCOVERY) FontWeight.Bold else FontWeight.Normal,
-                            color = if (scanMode == ScanMode.UDP_DISCOVERY) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1
-                        )
-                    }
-                }
-
-                Surface(
-                    onClick = { viewModel.setScanMode(ScanMode.SUBNET_PING) },
-                    shape = RoundedCornerShape(6.dp),
-                    color = if (scanMode == ScanMode.SUBNET_PING) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    border = androidx.compose.foundation.BorderStroke(
-                        1.dp,
-                        if (scanMode == ScanMode.SUBNET_PING) MaterialTheme.colorScheme.primary else Color.Transparent
-                    ),
-                    modifier = Modifier.weight(1f).height(28.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxSize().padding(horizontal = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            Icons.Default.Lan,
-                            contentDescription = null,
-                            modifier = Modifier.size(13.dp),
-                            tint = if (scanMode == ScanMode.SUBNET_PING) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            "Quét dải IP (1..254)",
-                            fontSize = 10.sp,
-                            fontWeight = if (scanMode == ScanMode.SUBNET_PING) FontWeight.Bold else FontWeight.Normal,
-                            color = if (scanMode == ScanMode.SUBNET_PING) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1
-                        )
-                    }
-                }
-            }
-
             // Progress indicator
             AnimatedVisibility(visible = isScanning) {
-                if (scanMode == ScanMode.SUBNET_PING && scanProgress != null) {
-                    val progressFloat = scanProgress!!.first.toFloat() / scanProgress!!.second.toFloat()
-                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 2.dp)) {
-                        LinearProgressIndicator(
-                            progress = { progressFloat },
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Text(
-                            text = "Tiến độ quét IP: ${scanProgress!!.first}/${scanProgress!!.second} hosts (${(progressFloat * 100).toInt()}%)",
-                            fontSize = 10.5.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                } else {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                }
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 2.dp)
+                )
             }
 
             // Search Bar (Toggleable to save maximum vertical space)
@@ -843,19 +762,19 @@ fun ScannerScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 2.dp),
+                        .padding(horizontal = 8.dp, vertical = 1.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "DANH SÁCH THIẾT BỊ PHÁT HIỆN (${devices.size}):",
-                        fontSize = 10.5.sp,
+                        text = "DANH SÁCH THIẾT BỊ (${devices.size}):",
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary
                     )
                     Text(
                         text = "$cameraCount Camera • $recorderCount Đầu ghi",
-                        fontSize = 10.5.sp,
+                        fontSize = 10.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -863,8 +782,8 @@ fun ScannerScreen(
 
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 2.dp, bottom = 84.dp),
-                    verticalArrangement = Arrangement.spacedBy(5.dp)
+                    contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = 1.dp, bottom = 80.dp),
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
                     itemsIndexed(devices, key = { _, device -> device.id }) { index, device ->
                         DeviceCard(

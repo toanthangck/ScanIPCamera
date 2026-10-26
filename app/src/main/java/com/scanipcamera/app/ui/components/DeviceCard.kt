@@ -78,19 +78,19 @@ fun DeviceCard(
                         else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
                     },
                     modifier = Modifier
-                        .width(42.dp)
+                        .width(34.dp)
                         .fillMaxHeight()
                 ) {
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(vertical = 6.dp, horizontal = 2.dp),
+                            .padding(vertical = 4.dp, horizontal = 1.dp),
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.Center
                     ) {
                         Text(
                             text = String.format("%02d", itemIndex),
-                            fontSize = 13.5.sp,
+                            fontSize = 11.5.sp,
                             fontWeight = FontWeight.Black,
                             fontFamily = FontFamily.Monospace,
                             color = when (device.category) {
@@ -99,7 +99,7 @@ fun DeviceCard(
                                 else -> MaterialTheme.colorScheme.primary
                             }
                         )
-                        Spacer(modifier = Modifier.height(3.dp))
+                        Spacer(modifier = Modifier.height(2.dp))
                         Icon(
                             imageVector = when (device.category) {
                                 DeviceCategory.NVR -> Icons.Default.Storage
@@ -112,16 +112,16 @@ fun DeviceCard(
                                 DeviceCategory.DVR -> Color(0xFFB45309)
                                 else -> MaterialTheme.colorScheme.primary
                             },
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(14.dp)
                         )
-                        Spacer(modifier = Modifier.height(2.dp))
+                        Spacer(modifier = Modifier.height(1.dp))
                         Text(
                             text = when (device.category) {
                                 DeviceCategory.NVR -> "NVR"
                                 DeviceCategory.DVR -> "DVR"
                                 else -> "CAM"
                             },
-                            fontSize = 8.5.sp,
+                            fontSize = 7.5.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = when (device.category) {
                                 DeviceCategory.NVR -> Color(0xFF4338CA)
@@ -143,7 +143,7 @@ fun DeviceCard(
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .padding(horizontal = 10.dp, vertical = 8.dp)
+                    .padding(horizontal = 8.dp, vertical = 4.dp)
             ) {
             // ROW 1: BRAND BADGE + FULL MODEL NAME + STATUS BADGES
             Row(
@@ -249,54 +249,75 @@ fun DeviceCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(2.dp))
 
-            // ROW 2: IP ADDRESS + PORTS
+            // ROW 2: IP ADDRESS + WEB PORT + (IP MÁY BẠN NẾU TRÙNG)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                // IP Address (Bold Monospace)
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                // IP Address + Web Port (Clickable to change IP)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.clickable { onConfigureClick() }
+                ) {
                     Box(
                         modifier = Modifier
-                            .size(6.dp)
+                            .size(5.dp)
                             .clip(CircleShape)
                             .background(if (isSameSubnet) Color(0xFF10B981) else Color(0xFFF59E0B))
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = device.ipv4Address,
+                        text = "${device.ipv4Address}:${device.httpPort}",
                         fontWeight = FontWeight.ExtraBold,
-                        fontSize = 14.sp,
+                        fontSize = 13.sp,
                         fontFamily = FontFamily.Monospace,
                         color = MaterialTheme.colorScheme.onSurface
                     )
+
+                    // Ghi rõ "IP máy bạn" nếu IP của thiết bị trùng với IP điện thoại
+                    if (phoneIp.isNotBlank() && device.ipv4Address == phoneIp) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Surface(
+                            color = MaterialTheme.colorScheme.primary,
+                            shape = RoundedCornerShape(3.dp)
+                        ) {
+                            Text(
+                                text = "IP máy bạn",
+                                color = Color.White,
+                                fontSize = 7.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.5.dp)
+                            )
+                        }
+                    }
                 }
 
-                // Ports: HTTP and SDK/TCP
+                // Cổng Web & Cổng SDK
                 Surface(
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                     shape = RoundedCornerShape(4.dp)
                 ) {
-                    val portText = if (device.sdkPort > 0 && device.sdkPort != device.httpPort) {
-                        "Port: ${device.httpPort} / ${device.sdkPort}"
-                    } else {
-                        "Port: ${device.httpPort}"
+                    val portText = buildString {
+                        append("Web: ${device.httpPort}")
+                        if (device.sdkPort > 0 && device.sdkPort != device.httpPort) {
+                            append(" • SDK: ${device.sdkPort}")
+                        }
                     }
                     Text(
                         text = portText,
-                        fontSize = 10.5.sp,
+                        fontSize = 9.sp,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(3.dp))
+            Spacer(modifier = Modifier.height(2.dp))
 
             // ROW 3: MAC ADDRESS + SERIAL NUMBER (Clickable to copy)
             Row(
@@ -307,20 +328,19 @@ fun DeviceCard(
                 // MAC Address (Click to copy)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .clickable {
-                            if (device.macAddress.isNotBlank()) {
-                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                clipboard.setPrimaryClip(ClipData.newPlainText("MAC Address", device.macAddress))
-                                Toast.makeText(context, "Đã sao chép MAC: ${device.macAddress}", Toast.LENGTH_SHORT).show()
-                            }
+                    modifier = Modifier.clickable {
+                        if (device.macAddress.isNotBlank()) {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText("MAC Address", device.macAddress))
+                            Toast.makeText(context, "Đã sao chép MAC", Toast.LENGTH_SHORT).show()
                         }
+                    }
                 ) {
                     Text(
-                        text = "MAC: ${device.macAddress.ifEmpty { "Chưa có MAC" }}",
-                        fontSize = 10.5.sp,
+                        text = "MAC: ${device.macAddress.ifEmpty { "Chưa có" }}",
+                        fontSize = 9.5.sp,
                         fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Medium,
+                        fontWeight = FontWeight.Normal,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -328,18 +348,17 @@ fun DeviceCard(
                 // Serial Number (Cyan Tech, Click to copy)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .clickable {
-                            if (device.serialNumber.isNotBlank()) {
-                                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                clipboard.setPrimaryClip(ClipData.newPlainText("Serial Number", device.serialNumber))
-                                Toast.makeText(context, "Đã sao chép S/N: ${device.serialNumber}", Toast.LENGTH_SHORT).show()
-                            }
+                    modifier = Modifier.clickable {
+                        if (device.serialNumber.isNotBlank()) {
+                            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                            clipboard.setPrimaryClip(ClipData.newPlainText("Serial Number", device.serialNumber))
+                            Toast.makeText(context, "Đã sao chép S/N", Toast.LENGTH_SHORT).show()
                         }
+                    }
                 ) {
                     Text(
                         text = "S/N: ${device.serialNumber.ifEmpty { "N/A" }}",
-                        fontSize = 10.5.sp,
+                        fontSize = 9.5.sp,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF0284C7)
@@ -347,20 +366,20 @@ fun DeviceCard(
                 }
             }
 
-            Spacer(modifier = Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(3.dp))
 
-            // ROW 4: 4 CLEAR ACTION BUTTONS - ABSOLUTELY NO OVERLAPPING, ZERO MISCLICKS!
+            // ROW 4: 4 COMPACT ACTION BUTTONS (25dp height - saves maximum screen height!)
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 // Button 1: Đổi IP (Configure IP)
                 Surface(
                     onClick = onConfigureClick,
-                    shape = RoundedCornerShape(6.dp),
+                    shape = RoundedCornerShape(5.dp),
                     color = Color(0xFF0284C7).copy(alpha = 0.12f),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF0284C7).copy(alpha = 0.45f)),
-                    modifier = Modifier.weight(1f).height(31.dp)
+                    modifier = Modifier.weight(1f).height(25.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxSize().padding(horizontal = 2.dp),
@@ -371,12 +390,12 @@ fun DeviceCard(
                             imageVector = Icons.Default.Edit,
                             contentDescription = null,
                             tint = Color(0xFF0284C7),
-                            modifier = Modifier.size(13.dp)
+                            modifier = Modifier.size(11.dp)
                         )
-                        Spacer(modifier = Modifier.width(3.dp))
+                        Spacer(modifier = Modifier.width(2.dp))
                         Text(
                             text = "Đổi IP",
-                            fontSize = 10.sp,
+                            fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF0284C7),
                             maxLines = 1
@@ -392,10 +411,10 @@ fun DeviceCard(
                         runCatching { context.startActivity(intent) }
                             .onFailure { Toast.makeText(context, "Không mở được trình duyệt", Toast.LENGTH_SHORT).show() }
                     },
-                    shape = RoundedCornerShape(6.dp),
+                    shape = RoundedCornerShape(5.dp),
                     color = Color(0xFF2563EB).copy(alpha = 0.12f),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2563EB).copy(alpha = 0.45f)),
-                    modifier = Modifier.weight(1f).height(31.dp)
+                    modifier = Modifier.weight(1f).height(25.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxSize().padding(horizontal = 2.dp),
@@ -406,12 +425,12 @@ fun DeviceCard(
                             imageVector = Icons.Default.Language,
                             contentDescription = null,
                             tint = Color(0xFF2563EB),
-                            modifier = Modifier.size(13.dp)
+                            modifier = Modifier.size(11.dp)
                         )
-                        Spacer(modifier = Modifier.width(3.dp))
+                        Spacer(modifier = Modifier.width(2.dp))
                         Text(
                             text = "Mở Web",
-                            fontSize = 10.sp,
+                            fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF2563EB),
                             maxLines = 1
@@ -422,10 +441,10 @@ fun DeviceCard(
                 // Button 3: Cài đặt (WDR, Độ phân giải, NTP, Hình ảnh)
                 Surface(
                     onClick = onSettingsClick,
-                    shape = RoundedCornerShape(6.dp),
+                    shape = RoundedCornerShape(5.dp),
                     color = Color(0xFF0D9488).copy(alpha = 0.12f),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF0D9488).copy(alpha = 0.45f)),
-                    modifier = Modifier.weight(1f).height(31.dp)
+                    modifier = Modifier.weight(1f).height(25.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxSize().padding(horizontal = 2.dp),
@@ -436,12 +455,12 @@ fun DeviceCard(
                             imageVector = Icons.Default.Tune,
                             contentDescription = null,
                             tint = Color(0xFF0D9488),
-                            modifier = Modifier.size(13.dp)
+                            modifier = Modifier.size(11.dp)
                         )
-                        Spacer(modifier = Modifier.width(3.dp))
+                        Spacer(modifier = Modifier.width(2.dp))
                         Text(
                             text = "Cài đặt",
-                            fontSize = 10.sp,
+                            fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFF0D9488),
                             maxLines = 1
@@ -453,10 +472,10 @@ fun DeviceCard(
                 Box(modifier = Modifier.weight(1f)) {
                     Surface(
                         onClick = { showMenu = true },
-                        shape = RoundedCornerShape(6.dp),
+                        shape = RoundedCornerShape(5.dp),
                         color = Color(0xFF475569).copy(alpha = 0.12f),
                         border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF475569).copy(alpha = 0.45f)),
-                        modifier = Modifier.fillMaxWidth().height(31.dp)
+                        modifier = Modifier.fillMaxWidth().height(25.dp)
                     ) {
                         Row(
                             modifier = Modifier.fillMaxSize().padding(horizontal = 2.dp),
@@ -467,12 +486,12 @@ fun DeviceCard(
                                 imageVector = Icons.Default.MoreHoriz,
                                 contentDescription = null,
                                 tint = Color(0xFF475569),
-                                modifier = Modifier.size(14.dp)
+                                modifier = Modifier.size(12.dp)
                             )
                             Spacer(modifier = Modifier.width(2.dp))
                             Text(
                                 text = "Thêm ▾",
-                                fontSize = 10.sp,
+                                fontSize = 9.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF475569),
                                 maxLines = 1
