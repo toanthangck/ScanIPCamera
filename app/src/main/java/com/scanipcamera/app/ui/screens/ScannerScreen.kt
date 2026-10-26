@@ -46,7 +46,6 @@ fun ScannerScreen(
     val wanInfo by viewModel.wanInfo.collectAsState()
     val scanMode by viewModel.scanMode.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
-    val selectedCategoryFilter by viewModel.selectedCategoryFilter.collectAsState()
 
     val editingDevice by viewModel.editingDevice.collectAsState()
     val settingsDevice by viewModel.settingsDevice.collectAsState()
@@ -565,62 +564,6 @@ fun ScannerScreen(
                 }
             }
 
-            val cameraCount = remember(devices) { devices.count { it.category == DeviceCategory.CAMERA } }
-            val nvrCount = remember(devices) { devices.count { it.category == DeviceCategory.NVR } }
-            val dvrCount = remember(devices) { devices.count { it.category == DeviceCategory.DVR } }
-            val recorderCount = nvrCount + dvrCount
-
-            // Category Filter Chips (Camera vs NVR vs DVR)
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 10.dp, vertical = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(5.dp)
-            ) {
-                FilterChip(
-                    selected = selectedCategoryFilter == null,
-                    onClick = { viewModel.setCategoryFilter(null) },
-                    label = { Text("Tất cả (${devices.size})", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold) },
-                    modifier = Modifier.height(28.dp)
-                )
-                FilterChip(
-                    selected = selectedCategoryFilter == DeviceCategory.CAMERA,
-                    onClick = {
-                        viewModel.setCategoryFilter(if (selectedCategoryFilter == DeviceCategory.CAMERA) null else DeviceCategory.CAMERA)
-                    },
-                    leadingIcon = {
-                        Icon(Icons.Default.Videocam, contentDescription = null, modifier = Modifier.size(13.dp))
-                    },
-                    label = { Text("Camera IP ($cameraCount)", fontSize = 10.5.sp) },
-                    modifier = Modifier.height(28.dp)
-                )
-                FilterChip(
-                    selected = selectedCategoryFilter == DeviceCategory.NVR,
-                    onClick = {
-                        viewModel.setCategoryFilter(if (selectedCategoryFilter == DeviceCategory.NVR) null else DeviceCategory.NVR)
-                    },
-                    leadingIcon = {
-                        Icon(Icons.Default.Storage, contentDescription = null, modifier = Modifier.size(13.dp))
-                    },
-                    label = { Text("Đầu ghi NVR ($nvrCount)", fontSize = 10.5.sp) },
-                    modifier = Modifier.height(28.dp)
-                )
-                if (dvrCount > 0 || selectedCategoryFilter == DeviceCategory.DVR) {
-                    FilterChip(
-                        selected = selectedCategoryFilter == DeviceCategory.DVR,
-                        onClick = {
-                            viewModel.setCategoryFilter(if (selectedCategoryFilter == DeviceCategory.DVR) null else DeviceCategory.DVR)
-                        },
-                        leadingIcon = {
-                            Icon(Icons.Default.Dns, contentDescription = null, modifier = Modifier.size(13.dp))
-                        },
-                        label = { Text("Đầu ghi DVR ($dvrCount)", fontSize = 10.5.sp) },
-                        modifier = Modifier.height(28.dp)
-                    )
-                }
-            }
-
             // Author / Owner Quick Contact Bar
             Surface(
                 modifier = Modifier
@@ -693,27 +636,6 @@ fun ScannerScreen(
                     }
                 }
             } else {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 1.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "DANH SÁCH THIẾT BỊ (${devices.size}):",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        text = "$cameraCount Camera • $recorderCount Đầu ghi",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = 1.dp, bottom = 80.dp),

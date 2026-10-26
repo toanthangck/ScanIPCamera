@@ -253,13 +253,11 @@ fun DeviceCard(
 
             Spacer(modifier = Modifier.height(2.dp))
 
-            // ROW 2: IP ADDRESS + CỔNG WEB (XANH DƯƠNG) + CỔNG RTSP/ONVIF (TÍM) + CỔNG DỊCH VỤ (CAM)
+            // ROW 2: IP ADDRESS (BÊN TRÁI) + CÁC CỔNG GỌN GÀNG (BÊN PHẢI - VỪA KHÍT 1 MÀN HÌNH, KHÔNG KÉO TAY)
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 // 1. IP Address
                 Row(
@@ -276,116 +274,88 @@ fun DeviceCard(
                     Text(
                         text = device.ipv4Address,
                         fontWeight = FontWeight.Black,
-                        fontSize = 13.sp,
+                        fontSize = 12.5.sp,
                         fontFamily = FontFamily.Monospace,
                         color = MaterialTheme.colorScheme.onSurface
                     )
-                }
-
-                // Ghi thêm "IP máy bạn" nếu trùng IP điện thoại
-                if (phoneIp.isNotBlank() && device.ipv4Address == phoneIp) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.primary,
-                        shape = RoundedCornerShape(3.dp)
-                    ) {
-                        Text(
-                            text = "IP máy bạn",
-                            color = Color.White,
-                            fontSize = 7.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
-                        )
-                    }
-                }
-
-                // 2. Cổng Web (MÀU XANH DƯƠNG ĐẶC TRƯNG)
-                Surface(
-                    onClick = {
-                        val url = "http://${device.ipv4Address}:${device.httpPort}"
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                        runCatching { context.startActivity(intent) }
-                            .onFailure { Toast.makeText(context, "Không mở được trình duyệt", Toast.LENGTH_SHORT).show() }
-                    },
-                    color = Color(0xFF2563EB).copy(alpha = 0.12f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2563EB).copy(alpha = 0.5f)),
-                    shape = RoundedCornerShape(4.dp)
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Language,
-                            contentDescription = null,
-                            tint = Color(0xFF2563EB),
-                            modifier = Modifier.size(10.dp)
-                        )
+                    if (phoneIp.isNotBlank() && device.ipv4Address == phoneIp) {
                         Spacer(modifier = Modifier.width(3.dp))
-                        Text(
-                            text = "Web: ${device.httpPort}",
-                            fontSize = 9.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF1D4ED8)
-                        )
+                        Surface(
+                            color = MaterialTheme.colorScheme.primary,
+                            shape = RoundedCornerShape(3.dp)
+                        ) {
+                            Text(
+                                text = "Máy bạn",
+                                color = Color.White,
+                                fontSize = 7.5.sp,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(horizontal = 2.5.dp, vertical = 0.5.dp)
+                            )
+                        }
                     }
                 }
 
-                // 3. Cổng RTSP / ONVIF (MÀU TÍM ĐẶC TRƯNG)
-                val rtspPortVal = if (device.rtspPort > 0) device.rtspPort else 554
-                val isExplicitOnvif = device.brand == DeviceBrand.ONVIF || device.rawProtocol == "ONVIF"
-                Surface(
-                    onClick = onRtspClick,
-                    color = Color(0xFF8B5CF6).copy(alpha = 0.12f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF8B5CF6).copy(alpha = 0.5f)),
-                    shape = RoundedCornerShape(4.dp)
+                // 2. Cổng Web (Xanh dương), RTSP/ONVIF (Tím), Dịch vụ (Cam)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Videocam,
-                            contentDescription = null,
-                            tint = Color(0xFF7C3AED),
-                            modifier = Modifier.size(10.dp)
-                        )
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text(
-                            text = if (isExplicitOnvif) "ONVIF: $rtspPortVal" else "RTSP: $rtspPortVal",
-                            fontSize = 9.sp,
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF6D28D9)
-                        )
-                    }
-                }
-
-                // 4. Cổng Dịch vụ camera (MÀU CAM / HỔ PHÁCH ĐẶC TRƯNG)
-                if (device.sdkPort > 0) {
+                    // Cổng Web (Màu xanh dương)
                     Surface(
-                        onClick = onDiagnosticClick,
-                        color = Color(0xFFEA580C).copy(alpha = 0.12f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEA580C).copy(alpha = 0.5f)),
+                        onClick = {
+                            val url = "http://${device.ipv4Address}:${device.httpPort}"
+                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                            runCatching { context.startActivity(intent) }
+                                .onFailure { Toast.makeText(context, "Không mở được trình duyệt", Toast.LENGTH_SHORT).show() }
+                        },
+                        color = Color(0xFF2563EB).copy(alpha = 0.12f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2563EB).copy(alpha = 0.5f)),
                         shape = RoundedCornerShape(4.dp)
                     ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
+                        Text(
+                            text = "Web:${device.httpPort}",
+                            fontSize = 8.5.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF1D4ED8),
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                        )
+                    }
+
+                    // Cổng RTSP / ONVIF (Màu tím)
+                    val rtspPortVal = if (device.rtspPort > 0) device.rtspPort else 554
+                    val isExplicitOnvif = device.brand == DeviceBrand.ONVIF || device.rawProtocol == "ONVIF"
+                    Surface(
+                        onClick = onRtspClick,
+                        color = Color(0xFF8B5CF6).copy(alpha = 0.12f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF8B5CF6).copy(alpha = 0.5f)),
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Text(
+                            text = if (isExplicitOnvif) "ONVIF:$rtspPortVal" else "RTSP:$rtspPortVal",
+                            fontSize = 8.5.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF6D28D9),
+                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                        )
+                    }
+
+                    // Cổng Dịch vụ camera (Màu cam)
+                    if (device.sdkPort > 0) {
+                        Surface(
+                            onClick = onDiagnosticClick,
+                            color = Color(0xFFEA580C).copy(alpha = 0.12f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEA580C).copy(alpha = 0.5f)),
+                            shape = RoundedCornerShape(4.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Dns,
-                                contentDescription = null,
-                                tint = Color(0xFFEA580C),
-                                modifier = Modifier.size(10.dp)
-                            )
-                            Spacer(modifier = Modifier.width(3.dp))
                             Text(
-                                text = "Dịch vụ: ${device.sdkPort}",
-                                fontSize = 9.sp,
+                                text = "D.Vụ:${device.sdkPort}",
+                                fontSize = 8.5.sp,
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFFC2410C)
+                                color = Color(0xFFC2410C),
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
                             )
                         }
                     }
