@@ -7,6 +7,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -45,7 +46,6 @@ fun ScannerScreen(
     val wanInfo by viewModel.wanInfo.collectAsState()
     val scanMode by viewModel.scanMode.collectAsState()
     val searchQuery by viewModel.searchQuery.collectAsState()
-    val selectedBrandFilter by viewModel.selectedBrandFilter.collectAsState()
     val selectedCategoryFilter by viewModel.selectedCategoryFilter.collectAsState()
 
     val editingDevice by viewModel.editingDevice.collectAsState()
@@ -712,6 +712,11 @@ fun ScannerScreen(
                 }
             }
 
+            val cameraCount = remember(devices) { devices.count { it.category == DeviceCategory.CAMERA } }
+            val nvrCount = remember(devices) { devices.count { it.category == DeviceCategory.NVR } }
+            val dvrCount = remember(devices) { devices.count { it.category == DeviceCategory.DVR } }
+            val recorderCount = nvrCount + dvrCount
+
             // Category Filter Chips (Camera vs NVR vs DVR)
             Row(
                 modifier = Modifier
@@ -723,7 +728,7 @@ fun ScannerScreen(
                 FilterChip(
                     selected = selectedCategoryFilter == null,
                     onClick = { viewModel.setCategoryFilter(null) },
-                    label = { Text("Tất cả (${devices.size})", fontSize = 10.5.sp) },
+                    label = { Text("Tất cả (${devices.size})", fontSize = 10.5.sp, fontWeight = FontWeight.SemiBold) },
                     modifier = Modifier.height(28.dp)
                 )
                 FilterChip(
@@ -734,7 +739,7 @@ fun ScannerScreen(
                     leadingIcon = {
                         Icon(Icons.Default.Videocam, contentDescription = null, modifier = Modifier.size(13.dp))
                     },
-                    label = { Text("Camera IP", fontSize = 10.5.sp) },
+                    label = { Text("Camera IP ($cameraCount)", fontSize = 10.5.sp) },
                     modifier = Modifier.height(28.dp)
                 )
                 FilterChip(
@@ -745,58 +750,19 @@ fun ScannerScreen(
                     leadingIcon = {
                         Icon(Icons.Default.Storage, contentDescription = null, modifier = Modifier.size(13.dp))
                     },
-                    label = { Text("Đầu ghi NVR", fontSize = 10.5.sp) },
+                    label = { Text("Đầu ghi NVR ($nvrCount)", fontSize = 10.5.sp) },
                     modifier = Modifier.height(28.dp)
                 )
-                FilterChip(
-                    selected = selectedCategoryFilter == DeviceCategory.DVR,
-                    onClick = {
-                        viewModel.setCategoryFilter(if (selectedCategoryFilter == DeviceCategory.DVR) null else DeviceCategory.DVR)
-                    },
-                    leadingIcon = {
-                        Icon(Icons.Default.Dns, contentDescription = null, modifier = Modifier.size(13.dp))
-                    },
-                    label = { Text("Đầu ghi DVR / XVR", fontSize = 10.5.sp) },
-                    modifier = Modifier.height(28.dp)
-                )
-            }
-
-            // Brand Filter Chips (Filtered: Excluded Xiongmai and Unknown as requested!)
-            val visibleBrands = remember {
-                DeviceBrand.entries.filter { it != DeviceBrand.XIONGMAI && it != DeviceBrand.UNKNOWN }
-            }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState())
-                    .padding(horizontal = 10.dp, vertical = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(5.dp)
-            ) {
-                FilterChip(
-                    selected = selectedBrandFilter == null,
-                    onClick = { viewModel.setBrandFilter(null) },
-                    label = { Text("Tất cả hãng", fontSize = 10.5.sp) },
-                    modifier = Modifier.height(28.dp)
-                )
-
-                visibleBrands.forEach { brand ->
+                if (dvrCount > 0 || selectedCategoryFilter == DeviceCategory.DVR) {
                     FilterChip(
-                        selected = selectedBrandFilter == brand,
+                        selected = selectedCategoryFilter == DeviceCategory.DVR,
                         onClick = {
-                            viewModel.setBrandFilter(
-                                if (selectedBrandFilter == brand) null else brand
-                            )
+                            viewModel.setCategoryFilter(if (selectedCategoryFilter == DeviceCategory.DVR) null else DeviceCategory.DVR)
                         },
                         leadingIcon = {
-                            Box(
-                                modifier = Modifier
-                                    .size(7.dp)
-                                    .clip(CircleShape)
-                                    .background(brand.badgeColor)
-                            )
+                            Icon(Icons.Default.Dns, contentDescription = null, modifier = Modifier.size(13.dp))
                         },
-                        label = { Text(brand.displayName, fontSize = 10.5.sp) },
+                        label = { Text("Đầu ghi DVR ($dvrCount)", fontSize = 10.5.sp) },
                         modifier = Modifier.height(28.dp)
                     )
                 }
@@ -874,14 +840,36 @@ fun ScannerScreen(
                     }
                 }
             } else {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "DANH SÁCH THIẾT BỊ PHÁT HIỆN (${devices.size}):",
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = "$cameraCount Camera • $recorderCount Đầu ghi",
+                        fontSize = 10.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(start = 10.dp, end = 10.dp, top = 2.dp, bottom = 84.dp),
                     verticalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
-                    items(devices, key = { it.id }) { device ->
+                    itemsIndexed(devices, key = { _, device -> device.id }) { index, device ->
                         DeviceCard(
                             device = device,
+                            itemIndex = index + 1,
                             phoneIp = wifiInfo.ipAddress,
                             phoneMask = wifiInfo.subnetMask,
                             isIpConflict = conflictingIps.contains(device.ipv4Address),

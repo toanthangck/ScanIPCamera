@@ -33,6 +33,7 @@ import com.scanipcamera.app.ui.theme.*
 @Composable
 fun DeviceCard(
     device: CameraDevice,
+    itemIndex: Int = 0,
     phoneIp: String = "",
     phoneMask: String = "255.255.255.0",
     isIpConflict: Boolean = false,
@@ -62,11 +63,88 @@ fun DeviceCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.25f))
     ) {
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 8.dp)
+                .height(IntrinsicSize.Min),
+            verticalAlignment = Alignment.CenterVertically
         ) {
+            // LEFT COLUMN: NUMBERED STT & DEVICE TYPE (Bên trái có danh sách đánh số thứ tự)
+            if (itemIndex > 0) {
+                Surface(
+                    color = when (device.category) {
+                        DeviceCategory.NVR -> Color(0xFF4F46E5).copy(alpha = 0.10f)
+                        DeviceCategory.DVR -> Color(0xFFD97706).copy(alpha = 0.10f)
+                        else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+                    },
+                    modifier = Modifier
+                        .width(42.dp)
+                        .fillMaxHeight()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(vertical = 6.dp, horizontal = 2.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Text(
+                            text = String.format("%02d", itemIndex),
+                            fontSize = 13.5.sp,
+                            fontWeight = FontWeight.Black,
+                            fontFamily = FontFamily.Monospace,
+                            color = when (device.category) {
+                                DeviceCategory.NVR -> Color(0xFF4338CA)
+                                DeviceCategory.DVR -> Color(0xFFB45309)
+                                else -> MaterialTheme.colorScheme.primary
+                            }
+                        )
+                        Spacer(modifier = Modifier.height(3.dp))
+                        Icon(
+                            imageVector = when (device.category) {
+                                DeviceCategory.NVR -> Icons.Default.Storage
+                                DeviceCategory.DVR -> Icons.Default.Dns
+                                else -> Icons.Default.Videocam
+                            },
+                            contentDescription = null,
+                            tint = when (device.category) {
+                                DeviceCategory.NVR -> Color(0xFF4338CA)
+                                DeviceCategory.DVR -> Color(0xFFB45309)
+                                else -> MaterialTheme.colorScheme.primary
+                            },
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = when (device.category) {
+                                DeviceCategory.NVR -> "NVR"
+                                DeviceCategory.DVR -> "DVR"
+                                else -> "CAM"
+                            },
+                            fontSize = 8.5.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = when (device.category) {
+                                DeviceCategory.NVR -> Color(0xFF4338CA)
+                                DeviceCategory.DVR -> Color(0xFFB45309)
+                                else -> MaterialTheme.colorScheme.primary
+                            }
+                        )
+                    }
+                }
+
+                Box(
+                    modifier = Modifier
+                        .width(1.dp)
+                        .fillMaxHeight()
+                        .background(MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+                )
+            }
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(horizontal = 10.dp, vertical = 8.dp)
+            ) {
             // ROW 1: BRAND BADGE + FULL MODEL NAME + STATUS BADGES
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -479,4 +557,5 @@ fun DeviceCard(
             }
         }
     }
+}
 }

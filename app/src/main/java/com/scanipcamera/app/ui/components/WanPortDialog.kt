@@ -112,22 +112,21 @@ fun WanPortDialog(
                 }
 
                 // Quick Port Selector Chips
-                Text(text = "Chọn nhanh cổng camera thường dùng:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Text(text = "Chọn cổng camera thường dùng:", fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     commonPorts.take(3).forEach { (port, label) ->
-                        OutlinedButton(
+                        FilterChip(
+                            selected = portInput == port.toString(),
                             onClick = {
                                 portInput = port.toString()
                                 testPort(port)
                             },
-                            modifier = Modifier.weight(1f),
-                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp)
-                        ) {
-                            Text(text = label, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                        }
+                            label = { Text(text = label, fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                            modifier = Modifier.weight(1f).height(32.dp)
+                        )
                     }
                 }
                 Row(
@@ -135,16 +134,15 @@ fun WanPortDialog(
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     commonPorts.drop(3).forEach { (port, label) ->
-                        OutlinedButton(
+                        FilterChip(
+                            selected = portInput == port.toString(),
                             onClick = {
                                 portInput = port.toString()
                                 testPort(port)
                             },
-                            modifier = Modifier.weight(1f),
-                            contentPadding = PaddingValues(horizontal = 4.dp, vertical = 4.dp)
-                        ) {
-                            Text(text = label, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                        }
+                            label = { Text(text = label, fontSize = 10.sp, fontWeight = FontWeight.Bold) },
+                            modifier = Modifier.weight(1f).height(32.dp)
+                        )
                     }
                 }
 

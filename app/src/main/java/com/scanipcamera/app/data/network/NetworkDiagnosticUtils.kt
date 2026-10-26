@@ -64,6 +64,9 @@ object NetworkDiagnosticUtils {
                 8000 -> "Hikvision SDK / Control"
                 37777 -> "Dahua TCP Service"
                 8899 -> "Xiongmai ONVIF / Media"
+                34567 -> "Xiongmai Net DVR/NVR"
+                5000 -> "Uniview Media"
+                1935 -> "RTMP Stream"
                 8080 -> "Alternate HTTP"
                 else -> "Port $port"
             }
