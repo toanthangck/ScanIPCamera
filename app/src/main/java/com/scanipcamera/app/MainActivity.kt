@@ -31,6 +31,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Initialize Dahua official NetSDK native library
+        com.scanipcamera.app.data.scanner.DahuaNetSdkManager.init()
+
         checkAndRequestPermissions()
 
         setContent {

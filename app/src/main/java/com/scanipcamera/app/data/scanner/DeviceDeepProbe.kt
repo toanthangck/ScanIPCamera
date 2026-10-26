@@ -29,6 +29,12 @@ object DeviceDeepProbe {
     ): CameraDevice? = withContext(Dispatchers.IO) {
         if (ip.isBlank()) return@withContext null
 
+        // 0. Try Dahua Official NetSDK Native Unicast Search
+        val netSdkDevice = DahuaNetSdkManager.searchDeviceByIp(ip)
+        if (netSdkDevice != null && netSdkDevice.macAddress.isNotBlank()) {
+            return@withContext netSdkDevice
+        }
+
         // 1. Try Dahua Unicast UDP (Port 37810) - Fastest & most accurate for Dahua/KBVISION/Imou/XVR
         val dahuaDevice = probeDahuaUdp(ip)
         if (dahuaDevice != null && dahuaDevice.macAddress.isNotBlank() && dahuaDevice.serialNumber.isNotBlank()) {

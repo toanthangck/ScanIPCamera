@@ -35,6 +35,20 @@ class DahuaConfigurator(
         }
         val safePayload = payload.copy(newGateway = effectiveGateway)
 
+        // 0. Try official Dahua NetSDK native ModifyDevice (libnetsdk.so)
+        val netSdkOk = com.scanipcamera.app.data.scanner.DahuaNetSdkManager.modifyDevice(
+            currentIp = device.ipv4Address,
+            macAddress = payload.macAddress,
+            newIp = payload.newIp,
+            newMask = payload.newSubnetMask,
+            newGateway = safePayload.newGateway,
+            username = "admin",
+            password = payload.currentPassword
+        )
+        if (netSdkOk) {
+            return@withContext Result.success("Đổi IP Dahua thành công sang ${payload.newIp} qua NetSDK!")
+        }
+
         // 1. Try HTTP CGI directly if current IP is reachable
         if (device.ipv4Address.isNotBlank()) {
             val httpResult = configService.configureDahuaNetworkViaHttp(device, safePayload)

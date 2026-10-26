@@ -212,6 +212,13 @@ class DeviceScannerManager(private val context: Context) {
             coroutineScope {
                 val scope = this
 
+                // 0. Dahua Official NetSDK Native Discovery (libnetsdk.so)
+                launch {
+                    DahuaNetSdkManager.startSearch { device ->
+                        addOrUpdateDevice(device, scope)
+                    }
+                }
+
                 // 1. Dahua Multicast + Broadcast + DHIP Binary Framing Scanner
                 launch {
                     dahuaScanner.scan(timeoutMs, broadcastAddresses) { device ->
@@ -252,6 +259,7 @@ class DeviceScannerManager(private val context: Context) {
         } catch (e: Exception) {
             Log.e(TAG, "Scan orchestration error", e)
         } finally {
+            DahuaNetSdkManager.stopSearch()
             networkUtils.releaseMulticastLock()
             _scanProgress.value = null
             _isScanning.value = false
