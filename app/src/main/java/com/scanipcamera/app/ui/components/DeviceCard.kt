@@ -8,7 +8,9 @@ import android.net.Uri
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -26,6 +28,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.scanipcamera.app.data.model.CameraDevice
+import com.scanipcamera.app.data.model.DeviceBrand
 import com.scanipcamera.app.data.model.DeviceCategory
 import com.scanipcamera.app.data.network.NetworkUtils
 import com.scanipcamera.app.ui.theme.*
@@ -48,7 +51,6 @@ fun DeviceCard(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    var showMenu by remember { mutableStateOf(false) }
 
     val isSameSubnet = remember(device.ipv4Address, phoneIp, phoneMask) {
         if (phoneIp.isBlank()) true else NetworkUtils.isSameSubnet(device.ipv4Address, phoneIp, phoneMask)
@@ -251,75 +253,148 @@ fun DeviceCard(
 
             Spacer(modifier = Modifier.height(2.dp))
 
-            // ROW 2: IP ADDRESS + WEB PORT + (IP MÁY BẠN NẾU TRÙNG)
+            // ROW 2: IP ADDRESS + CỔNG WEB (XANH DƯƠNG) + CỔNG RTSP/ONVIF (TÍM) + CỔNG DỊCH VỤ (CAM)
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
-                // IP Address + Web Port (Clickable to change IP)
+                // 1. IP Address
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.clickable { onConfigureClick() }
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(5.dp)
+                            .size(6.dp)
                             .clip(CircleShape)
                             .background(if (isSameSubnet) Color(0xFF10B981) else Color(0xFFF59E0B))
                     )
                     Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "${device.ipv4Address}:${device.httpPort}",
-                        fontWeight = FontWeight.ExtraBold,
+                        text = device.ipv4Address,
+                        fontWeight = FontWeight.Black,
                         fontSize = 13.sp,
                         fontFamily = FontFamily.Monospace,
                         color = MaterialTheme.colorScheme.onSurface
                     )
+                }
 
-                    // Ghi rõ "IP máy bạn" nếu IP của thiết bị trùng với IP điện thoại
-                    if (phoneIp.isNotBlank() && device.ipv4Address == phoneIp) {
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Surface(
-                            color = MaterialTheme.colorScheme.primary,
-                            shape = RoundedCornerShape(3.dp)
-                        ) {
-                            Text(
-                                text = "IP máy bạn",
-                                color = Color.White,
-                                fontSize = 7.5.sp,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.padding(horizontal = 3.dp, vertical = 0.5.dp)
-                            )
-                        }
+                // Ghi thêm "IP máy bạn" nếu trùng IP điện thoại
+                if (phoneIp.isNotBlank() && device.ipv4Address == phoneIp) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.primary,
+                        shape = RoundedCornerShape(3.dp)
+                    ) {
+                        Text(
+                            text = "IP máy bạn",
+                            color = Color.White,
+                            fontSize = 7.5.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 3.dp, vertical = 1.dp)
+                        )
                     }
                 }
 
-                // Cổng Web & Cổng SDK
+                // 2. Cổng Web (MÀU XANH DƯƠNG ĐẶC TRƯNG)
                 Surface(
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                    onClick = {
+                        val url = "http://${device.ipv4Address}:${device.httpPort}"
+                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+                        runCatching { context.startActivity(intent) }
+                            .onFailure { Toast.makeText(context, "Không mở được trình duyệt", Toast.LENGTH_SHORT).show() }
+                    },
+                    color = Color(0xFF2563EB).copy(alpha = 0.12f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2563EB).copy(alpha = 0.5f)),
                     shape = RoundedCornerShape(4.dp)
                 ) {
-                    val portText = buildString {
-                        append("Web: ${device.httpPort}")
-                        if (device.sdkPort > 0 && device.sdkPort != device.httpPort) {
-                            append(" • SDK: ${device.sdkPort}")
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Language,
+                            contentDescription = null,
+                            tint = Color(0xFF2563EB),
+                            modifier = Modifier.size(10.dp)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = "Web: ${device.httpPort}",
+                            fontSize = 9.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF1D4ED8)
+                        )
+                    }
+                }
+
+                // 3. Cổng RTSP / ONVIF (MÀU TÍM ĐẶC TRƯNG)
+                val rtspPortVal = if (device.rtspPort > 0) device.rtspPort else 554
+                val isExplicitOnvif = device.brand == DeviceBrand.ONVIF || device.rawProtocol == "ONVIF"
+                Surface(
+                    onClick = onRtspClick,
+                    color = Color(0xFF8B5CF6).copy(alpha = 0.12f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF8B5CF6).copy(alpha = 0.5f)),
+                    shape = RoundedCornerShape(4.dp)
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Videocam,
+                            contentDescription = null,
+                            tint = Color(0xFF7C3AED),
+                            modifier = Modifier.size(10.dp)
+                        )
+                        Spacer(modifier = Modifier.width(3.dp))
+                        Text(
+                            text = if (isExplicitOnvif) "ONVIF: $rtspPortVal" else "RTSP: $rtspPortVal",
+                            fontSize = 9.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF6D28D9)
+                        )
+                    }
+                }
+
+                // 4. Cổng Dịch vụ camera (MÀU CAM / HỔ PHÁCH ĐẶC TRƯNG)
+                if (device.sdkPort > 0) {
+                    Surface(
+                        onClick = onDiagnosticClick,
+                        color = Color(0xFFEA580C).copy(alpha = 0.12f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFEA580C).copy(alpha = 0.5f)),
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Dns,
+                                contentDescription = null,
+                                tint = Color(0xFFEA580C),
+                                modifier = Modifier.size(10.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = "Dịch vụ: ${device.sdkPort}",
+                                fontSize = 9.sp,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFC2410C)
+                            )
                         }
                     }
-                    Text(
-                        text = portText,
-                        fontSize = 9.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
-                    )
                 }
             }
 
             Spacer(modifier = Modifier.height(2.dp))
 
-            // ROW 3: MAC ADDRESS + SERIAL NUMBER (Clickable to copy)
+            // ROW 3: MAC ADDRESS + SERIAL NUMBER
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -337,8 +412,8 @@ fun DeviceCard(
                     }
                 ) {
                     Text(
-                        text = "MAC: ${device.macAddress.ifEmpty { "Chưa có" }}",
-                        fontSize = 9.5.sp,
+                        text = "MAC: ${device.macAddress.ifEmpty { "Chưa có MAC" }}",
+                        fontSize = 9.sp,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Normal,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -358,220 +433,11 @@ fun DeviceCard(
                 ) {
                     Text(
                         text = "S/N: ${device.serialNumber.ifEmpty { "N/A" }}",
-                        fontSize = 9.5.sp,
+                        fontSize = 9.sp,
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF0284C7)
                     )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(3.dp))
-
-            // ROW 4: 4 COMPACT ACTION BUTTONS (25dp height - saves maximum screen height!)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                // Button 1: Đổi IP (Configure IP)
-                Surface(
-                    onClick = onConfigureClick,
-                    shape = RoundedCornerShape(5.dp),
-                    color = Color(0xFF0284C7).copy(alpha = 0.12f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF0284C7).copy(alpha = 0.45f)),
-                    modifier = Modifier.weight(1f).height(25.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxSize().padding(horizontal = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = null,
-                            tint = Color(0xFF0284C7),
-                            modifier = Modifier.size(11.dp)
-                        )
-                        Spacer(modifier = Modifier.width(2.dp))
-                        Text(
-                            text = "Đổi IP",
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF0284C7),
-                            maxLines = 1
-                        )
-                    }
-                }
-
-                // Button 2: Mở Web GUI
-                Surface(
-                    onClick = {
-                        val url = "http://${device.ipv4Address}:${device.httpPort}"
-                        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                        runCatching { context.startActivity(intent) }
-                            .onFailure { Toast.makeText(context, "Không mở được trình duyệt", Toast.LENGTH_SHORT).show() }
-                    },
-                    shape = RoundedCornerShape(5.dp),
-                    color = Color(0xFF2563EB).copy(alpha = 0.12f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF2563EB).copy(alpha = 0.45f)),
-                    modifier = Modifier.weight(1f).height(25.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxSize().padding(horizontal = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Language,
-                            contentDescription = null,
-                            tint = Color(0xFF2563EB),
-                            modifier = Modifier.size(11.dp)
-                        )
-                        Spacer(modifier = Modifier.width(2.dp))
-                        Text(
-                            text = "Mở Web",
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF2563EB),
-                            maxLines = 1
-                        )
-                    }
-                }
-
-                // Button 3: Cài đặt (WDR, Độ phân giải, NTP, Hình ảnh)
-                Surface(
-                    onClick = onSettingsClick,
-                    shape = RoundedCornerShape(5.dp),
-                    color = Color(0xFF0D9488).copy(alpha = 0.12f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF0D9488).copy(alpha = 0.45f)),
-                    modifier = Modifier.weight(1f).height(25.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxSize().padding(horizontal = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Tune,
-                            contentDescription = null,
-                            tint = Color(0xFF0D9488),
-                            modifier = Modifier.size(11.dp)
-                        )
-                        Spacer(modifier = Modifier.width(2.dp))
-                        Text(
-                            text = "Cài đặt",
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF0D9488),
-                            maxLines = 1
-                        )
-                    }
-                }
-
-                // Button 4: Tiện ích / Thêm...
-                Box(modifier = Modifier.weight(1f)) {
-                    Surface(
-                        onClick = { showMenu = true },
-                        shape = RoundedCornerShape(5.dp),
-                        color = Color(0xFF475569).copy(alpha = 0.12f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF475569).copy(alpha = 0.45f)),
-                        modifier = Modifier.fillMaxWidth().height(25.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxSize().padding(horizontal = 2.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.MoreHoriz,
-                                contentDescription = null,
-                                tint = Color(0xFF475569),
-                                modifier = Modifier.size(12.dp)
-                            )
-                            Spacer(modifier = Modifier.width(2.dp))
-                            Text(
-                                text = "Thêm ▾",
-                                fontSize = 9.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFF475569),
-                                maxLines = 1
-                            )
-                        }
-                    }
-
-                    // Dropdown menu for RTSP, Ping diagnostic, WAN Port, Time Sync, Activate, Reboot
-                    DropdownMenu(
-                        expanded = showMenu,
-                        onDismissRequest = { showMenu = false }
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Kiểm tra mở Port WAN (NAT)", fontSize = 13.sp) },
-                            onClick = {
-                                showMenu = false
-                                onWanPortClick()
-                            },
-                            leadingIcon = {
-                                Icon(Icons.Default.Public, contentDescription = null, modifier = Modifier.size(16.dp))
-                            }
-                        )
-
-                        DropdownMenuItem(
-                            text = { Text("Đồng bộ giờ & Cấu hình NTP", fontSize = 13.sp) },
-                            onClick = {
-                                showMenu = false
-                                onTimeSyncClick()
-                            },
-                            leadingIcon = {
-                                Icon(Icons.Default.AccessTime, contentDescription = null, modifier = Modifier.size(16.dp))
-                            }
-                        )
-
-                        DropdownMenuItem(
-                            text = { Text("Xem luồng RTSP & Video", fontSize = 13.sp) },
-                            onClick = {
-                                showMenu = false
-                                onRtspClick()
-                            },
-                            leadingIcon = {
-                                Icon(Icons.Default.Videocam, contentDescription = null, modifier = Modifier.size(16.dp))
-                            }
-                        )
-
-                        DropdownMenuItem(
-                            text = { Text("Kiểm tra Ping & Port nội bộ", fontSize = 13.sp) },
-                            onClick = {
-                                showMenu = false
-                                onDiagnosticClick()
-                            },
-                            leadingIcon = {
-                                Icon(Icons.Default.NetworkCheck, contentDescription = null, modifier = Modifier.size(16.dp))
-                            }
-                        )
-
-                        if (!device.isActivated) {
-                            DropdownMenuItem(
-                                text = { Text("Kích hoạt thiết bị", fontSize = 13.sp) },
-                                onClick = {
-                                    showMenu = false
-                                    onActivateClick()
-                                },
-                                leadingIcon = {
-                                    Icon(Icons.Default.LockOpen, contentDescription = null, modifier = Modifier.size(16.dp))
-                                }
-                            )
-                        }
-
-                        DropdownMenuItem(
-                            text = { Text("Khởi động lại (Reboot)", fontSize = 13.sp) },
-                            onClick = {
-                                showMenu = false
-                                onRebootClick()
-                            },
-                            leadingIcon = {
-                                Icon(Icons.Default.RestartAlt, contentDescription = null, modifier = Modifier.size(16.dp))
-                            }
-                        )
-                    }
                 }
             }
         }
