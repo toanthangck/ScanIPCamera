@@ -348,9 +348,19 @@ fun DeviceCard(
                 ) {
                     val rtspPortVal = if (device.rtspPort > 0) device.rtspPort else 554
                     val isExplicitOnvif = device.brand == DeviceBrand.ONVIF || device.rawProtocol == "ONVIF"
+                    val sdkPortVal = when {
+                        openPorts.contains(37777) -> 37777
+                        openPorts.contains(34567) -> 34567
+                        openPorts.contains(8000) && device.brand == DeviceBrand.HIKVISION -> 8000
+                        device.sdkPort > 0 && (device.sdkPort != 8000 || device.brand == DeviceBrand.HIKVISION) -> device.sdkPort
+                        device.brand == DeviceBrand.DAHUA || device.brand == DeviceBrand.KBVISION || device.brand == DeviceBrand.IMOU -> 37777
+                        device.brand == DeviceBrand.HIKVISION || device.brand == DeviceBrand.EZVIZ -> 8000
+                        device.brand == DeviceBrand.XIONGMAI -> 34567
+                        else -> device.sdkPort
+                    }
                     val isWebOpen = openPorts.contains(activeHttpPort) || openPorts.contains(device.httpPort) || openPorts.contains(80) || openPorts.contains(8080)
                     val isRtspOpen = openPorts.contains(rtspPortVal) || openPorts.contains(554)
-                    val isSdkOpen = (device.sdkPort > 0 && openPorts.contains(device.sdkPort)) ||
+                    val isSdkOpen = (sdkPortVal > 0 && openPorts.contains(sdkPortVal)) ||
                             (device.brand == DeviceBrand.DAHUA && openPorts.contains(37777)) ||
                             (device.brand == DeviceBrand.HIKVISION && openPorts.contains(8000))
 
@@ -404,7 +414,7 @@ fun DeviceCard(
                     }
 
                     // Cổng Dịch vụ camera (Màu cam - nhấp nháy nếu là đầu ghi và cổng mở)
-                    if (device.sdkPort > 0) {
+                    if (sdkPortVal > 0) {
                         val sdkBlinking = isRecorder && isSdkOpen
                         Surface(
                             onClick = onDiagnosticClick,
@@ -417,7 +427,7 @@ fun DeviceCard(
                             modifier = if (sdkBlinking) Modifier.graphicsLayer { alpha = blinkAlpha } else Modifier
                         ) {
                             Text(
-                                text = "D.Vụ:${device.sdkPort}",
+                                text = "D.Vụ:$sdkPortVal",
                                 fontSize = 8.5.sp,
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.Bold,

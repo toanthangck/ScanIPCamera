@@ -55,7 +55,8 @@ object PortScannerUtils {
         val semaphore = Semaphore(concurrency)
 
         // 1. Quét ưu tiên các cổng CCTV thông dụng trước (Phát hiện ngay trong ~50ms)
-        val prioritySet = COMMON_CCTV_PORTS.filter { it in minPort..maxPort }.toSet()
+        // Luôn bao gồm các cổng SDK chuẩn CCTV 37777, 34567 ngoài dải 80..9000
+        val prioritySet = (COMMON_CCTV_PORTS.filter { it in minPort..maxPort } + listOf(37777, 34567, 554, 8000)).toSet()
         val priorityJobs = prioritySet.map { port ->
             launch {
                 semaphore.withPermit {

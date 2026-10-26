@@ -147,7 +147,11 @@ class DeviceScannerManager(private val context: Context) {
                                 ?: current.httpPort
 
                             val updatedRtspPort = if (open.contains(554)) 554 else if (open.contains(8554)) 8554 else current.rtspPort
-                            val updatedSdkPort = if (open.contains(37777)) 37777 else if (open.contains(8000) && current.brand == DeviceBrand.HIKVISION) 8000 else if (open.contains(34567)) 34567 else current.sdkPort
+                            val updatedSdkPort = if (open.contains(37777)) 37777
+                                else if (open.contains(8000) && current.brand == DeviceBrand.HIKVISION) 8000
+                                else if (open.contains(34567)) 34567
+                                else if (current.brand == DeviceBrand.DAHUA || current.brand == DeviceBrand.KBVISION || current.brand == DeviceBrand.IMOU) 37777
+                                else current.sdkPort
 
                             val updated = current.copy(
                                 httpPort = detectedWeb,
