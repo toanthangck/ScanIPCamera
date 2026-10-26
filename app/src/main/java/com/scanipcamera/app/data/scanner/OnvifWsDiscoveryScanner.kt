@@ -3,6 +3,7 @@ package com.scanipcamera.app.data.scanner
 import android.util.Log
 import com.scanipcamera.app.data.model.CameraDevice
 import com.scanipcamera.app.data.model.DeviceBrand
+import com.scanipcamera.app.data.model.DeviceCategory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.BufferedReader
@@ -100,6 +101,18 @@ class OnvifWsDiscoveryScanner {
     private fun parseWsDiscoveryResponse(xml: String, fallbackIp: String): CameraDevice? {
         if (!xml.contains("ProbeMatches") && !xml.contains("XAddrs")) return null
 
+        // STRICT CCTV CHECK: Must contain genuine ONVIF indicators (not Windows WSD or printers)
+        val isGenuineOnvif = xml.contains("onvif", ignoreCase = true) ||
+                xml.contains("NetworkVideoTransmitter", ignoreCase = true) ||
+                xml.contains("NetworkVideoDisplay", ignoreCase = true) ||
+                xml.contains("device_service", ignoreCase = true) ||
+                xml.contains("tds:Device", ignoreCase = true) ||
+                xml.contains("hardware/", ignoreCase = true)
+
+        if (!isGenuineOnvif) {
+            return null
+        }
+
         try {
             // 1. Extract XAddrs (e.g. http://192.168.1.64:80/onvif/device_service)
             val xaddrsRegex = "<[^>]*XAddrs[^>]*>([^<]+)</[^>]*XAddrs>".toRegex()
@@ -117,6 +130,11 @@ class OnvifWsDiscoveryScanner {
                 } catch (e: Exception) {
                     Log.v(TAG, "Failed parsing XAddr URL: $xaddrUrl")
                 }
+            }
+
+            // Exclude Windows WSD / UPnP ports
+            if (port == 5357 || port == 5358 || port == 2869) {
+                return null
             }
 
             // 2. Extract Scopes string
@@ -192,6 +210,11 @@ class OnvifWsDiscoveryScanner {
 
             val brand = DeviceBrand.fromModelOrVendor(modelName + " " + scopesStr + " " + serial)
             val (category, channels) = CameraDevice.detectCategoryAndChannels(modelName, scopesStr)
+
+            // Strictly ignore any non-CCTV device
+            if (category == DeviceCategory.OTHER) {
+                return null
+            }
 
             return CameraDevice(
                 id = if (mac.isNotBlank()) mac else (if (serial.isNotBlank()) serial else "$ip:$port"),

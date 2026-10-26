@@ -83,6 +83,9 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
         deviceList.map { dev ->
             overrides[dev.id] ?: dev
         }.filter { device ->
+            // Completely filter out any non-camera / non-recorder devices
+            if (device.category == DeviceCategory.OTHER) return@filter false
+
             val matchBrand = (brandFilter == null || device.brand == brandFilter)
             val matchCategory = (catFilter == null || device.category == catFilter)
             val matchQuery = if (trimmed.isEmpty()) {

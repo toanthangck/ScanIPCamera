@@ -44,6 +44,16 @@ class DeviceScannerManager(private val context: Context) {
     }
 
     private fun addOrUpdateDevice(device: CameraDevice, scope: CoroutineScope? = null) {
+        // STRICT CCTV FILTER: Completely exclude any non-camera / non-recorder device
+        if (device.category == DeviceCategory.OTHER) {
+            Log.d(TAG, "Excluding non-CCTV device: ${device.ipv4Address} (${device.model})")
+            return
+        }
+        if (device.brand == DeviceBrand.UNKNOWN && device.rtspPort == 0 && device.sdkPort == 0 && device.rawProtocol == "PING/PORT") {
+            Log.d(TAG, "Excluding unverified unknown device: ${device.ipv4Address}")
+            return
+        }
+
         var needsDeepProbe = false
         var targetIp = ""
 
@@ -97,7 +107,9 @@ class DeviceScannerManager(private val context: Context) {
                     targetIp = merged.ipv4Address
                 }
             }
-            _devices.value = discoveredMap.values.toList()
+            _devices.value = discoveredMap.values.filter {
+                it.category == DeviceCategory.CAMERA || it.category == DeviceCategory.NVR || it.category == DeviceCategory.DVR
+            }.toList()
         }
 
         // Asynchronously probe devices that are missing MAC or Serial Number

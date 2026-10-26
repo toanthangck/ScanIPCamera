@@ -18,7 +18,7 @@ class SubnetIpScanner {
 
     companion object {
         private const val TAG = "SubnetIpScanner"
-        private val CCTV_PORTS = intArrayOf(80, 554, 8000, 37777, 8899, 5000, 8080)
+        private val CCTV_PORTS = intArrayOf(554, 8000, 37777, 34567, 8899, 80, 8080)
         private const val CONNECT_TIMEOUT_MS = 250
         private const val MAX_CONCURRENCY = 30
 
@@ -71,25 +71,40 @@ class SubnetIpScanner {
                             // Deep probe to actively extract MAC, Serial, and precise Model directly over unicast
                             val probed = DeviceDeepProbe.probeDevice(targetIp, openPorts)
                             if (probed != null && (probed.brand != DeviceBrand.UNKNOWN || probed.macAddress.isNotBlank())) {
-                                onDeviceFound(probed)
+                                if (probed.category != DeviceCategory.OTHER) {
+                                    onDeviceFound(probed)
+                                }
                             } else {
                                 val mac = getMacFromArp(targetIp)
                                 val (brand, modelName) = detectBrandAndModel(targetIp, openPorts, mac)
-                                val category = when {
-                                    openPorts.contains(37777) || (openPorts.contains(8000) && brand == DeviceBrand.HIKVISION) -> DeviceCategory.NVR
-                                    openPorts.contains(554) || brand != DeviceBrand.UNKNOWN -> DeviceCategory.CAMERA
-                                    else -> DeviceCategory.OTHER
+
+                                // STRICT CCTV VERIFICATION: Only keep devices with RTSP, dedicated CCTV port, or verified CCTV MAC/brand
+                                val isGenuineCctv = openPorts.contains(554) ||
+                                        openPorts.contains(37777) ||
+                                        openPorts.contains(34567) ||
+                                        openPorts.contains(8899) ||
+                                        (brand != DeviceBrand.UNKNOWN && (openPorts.contains(8000) || mac.isNotBlank()))
+
+                                if (!isGenuineCctv) {
+                                    // Completely discard non-CCTV devices (routers, PCs, printers, etc.)
+                                    return@withPermit
+                                }
+
+                                val (category, channels) = CameraDevice.detectCategoryAndChannels(modelName, "$brand $targetIp")
+                                if (category == DeviceCategory.OTHER) {
+                                    return@withPermit
                                 }
 
                                 val device = CameraDevice(
                                     id = if (mac.isNotBlank()) mac else targetIp,
                                     brand = brand,
                                     category = category,
+                                    channelCount = channels,
                                     model = modelName,
                                     macAddress = mac,
                                     ipv4Address = targetIp,
                                     httpPort = if (openPorts.contains(80)) 80 else if (openPorts.contains(8080)) 8080 else openPorts.first(),
-                                    sdkPort = if (openPorts.contains(37777)) 37777 else if (openPorts.contains(8000) && brand == DeviceBrand.HIKVISION) 8000 else 0,
+                                    sdkPort = if (openPorts.contains(37777)) 37777 else if (openPorts.contains(8000) && brand == DeviceBrand.HIKVISION) 8000 else if (openPorts.contains(34567)) 34567 else 0,
                                     rtspPort = if (openPorts.contains(554)) 554 else 0,
                                     rawProtocol = "PING/PORT"
                                 )
@@ -162,8 +177,8 @@ class SubnetIpScanner {
         // 3. Proprietary port matching
         return when {
             ports.contains(37777) -> Pair(DeviceBrand.DAHUA, "Dahua Device")
+            ports.contains(34567) -> Pair(DeviceBrand.XIONGMAI, "Xiongmai Net DVR/NVR")
             ports.contains(8899) -> Pair(DeviceBrand.XIONGMAI, "Xiongmai Device")
-            ports.contains(5000) -> Pair(DeviceBrand.UNIVIEW, "Uniview Device")
             ports.contains(554) -> Pair(DeviceBrand.ONVIF, "Camera ONVIF (Port 554)")
             else -> {
                 val portStr = ports.joinToString("/")
