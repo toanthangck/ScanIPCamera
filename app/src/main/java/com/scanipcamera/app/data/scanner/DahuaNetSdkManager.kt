@@ -6,12 +6,16 @@ import com.company.NetSDK.CtrlType
 import com.company.NetSDK.DEVICE_IP_SEARCH_INFO
 import com.company.NetSDK.DEVICE_NET_INFO_EX
 import com.company.NetSDK.EM_LOGIN_SPAC_CAP_TYPE
+import com.company.NetSDK.FinalVar
 import com.company.NetSDK.INetSDK
 import com.company.NetSDK.NET_DEVICEINFO_Ex
+import com.company.NetSDK.NET_IN_INIT_DEVICE_ACCOUNT
 import com.company.NetSDK.NET_IN_LOGIN_WITH_HIGHLEVEL_SECURITY
+import com.company.NetSDK.NET_OUT_INIT_DEVICE_ACCOUNT
 import com.company.NetSDK.NET_OUT_LOGIN_WITH_HIGHLEVEL_SECURITY
 import com.company.NetSDK.NET_PARAM
 import com.company.NetSDK.NET_TIME
+import com.company.NetSDK.SDK_HARDDISK_STATE
 import com.scanipcamera.app.data.model.CameraDevice
 import com.scanipcamera.app.data.model.DeviceBrand
 import com.scanipcamera.app.data.model.DeviceCategory
@@ -20,6 +24,14 @@ import kotlinx.coroutines.withContext
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
+
+data class DevHddInfo(
+    val index: Int,
+    val totalGb: Double,
+    val freeGb: Double,
+    val status: Int,
+    val statusText: String
+)
 
 /**
  * High-performance wrapper around Dahua's official NetSDK (libnetsdk.so / INetSDK.jar).
@@ -366,6 +378,85 @@ object DahuaNetSdkManager {
         } catch (t: Throwable) {
             Log.e(TAG, "ptzControl failed", t)
             false
+        }
+    }
+
+    suspend fun initDeviceAccount(
+        mac: String,
+        targetIp: String = "",
+        username: String = "admin",
+        password: String
+    ): Result<String> = withContext(Dispatchers.IO) {
+        if (!init()) return@withContext Result.failure(Exception("NetSDK chưa được khởi tạo"))
+        try {
+            val stuIn = NET_IN_INIT_DEVICE_ACCOUNT().apply {
+                val cleanMac = mac.trim()
+                val macBytes = cleanMac.toByteArray(Charsets.UTF_8)
+                System.arraycopy(macBytes, 0, szMac, 0, minOf(macBytes.size, szMac.size))
+                val userBytes = username.trim().toByteArray(Charsets.UTF_8)
+                System.arraycopy(userBytes, 0, szUserName, 0, minOf(userBytes.size, szUserName.size))
+                val pwdBytes = password.trim().toByteArray(Charsets.UTF_8)
+                System.arraycopy(pwdBytes, 0, szPwd, 0, minOf(pwdBytes.size, szPwd.size))
+            }
+            val stuOut = NET_OUT_INIT_DEVICE_ACCOUNT()
+            val ipArg = if (targetIp.isNotBlank()) targetIp.trim() else null
+            val ok = INetSDK.InitDevAccount(stuIn, stuOut, 3000, ipArg)
+            if (ok) {
+                Result.success("Kích hoạt thiết bị Dahua/IMOU thành công qua NetSDK!")
+            } else {
+                Result.failure(Exception("Lỗi NetSDK InitDevAccount: mã lỗi ${INetSDK.GetLastError()}"))
+            }
+        } catch (t: Throwable) {
+            Result.failure(t)
+        }
+    }
+
+    suspend fun queryHddState(
+        ip: String,
+        port: Int = 37777,
+        user: String = "admin",
+        pass: String = ""
+    ): Result<List<DevHddInfo>> = withContext(Dispatchers.IO) {
+        val handle = login(ip, port, user, pass)
+        if (handle == 0L) {
+            return@withContext Result.failure(Exception("Đăng nhập thất bại (Mã lỗi: ${INetSDK.GetLastError()})"))
+        }
+        try {
+            val hardDiskState = SDK_HARDDISK_STATE()
+            val ok = INetSDK.QueryDevState(handle, FinalVar.SDK_DEVSTATE_DISK, hardDiskState, 3000)
+            if (ok) {
+                val list = mutableListOf<DevHddInfo>()
+                val count = hardDiskState.dwDiskNum
+                if (count > 0 && hardDiskState.stDisks != null) {
+                    for (i in 0 until minOf(count, hardDiskState.stDisks.size)) {
+                        val disk = hardDiskState.stDisks[i]
+                        val totalGb = disk.dwVolume.toDouble() / 1024.0
+                        val freeGb = disk.dwFreeSpace.toDouble() / 1024.0
+                        val statusText = when (disk.dwStatus.toInt()) {
+                            0 -> "Hoạt động tốt"
+                            1 -> "Ngủ / Tạm dừng"
+                            2 -> "Lỗi / Cần format"
+                            else -> "Trạng thái (${disk.dwStatus})"
+                        }
+                        list.add(
+                            DevHddInfo(
+                                index = i + 1,
+                                totalGb = totalGb,
+                                freeGb = freeGb,
+                                status = disk.dwStatus.toInt(),
+                                statusText = statusText
+                            )
+                        )
+                    }
+                }
+                Result.success(list)
+            } else {
+                Result.failure(Exception("Không truy vấn được thông tin ổ cứng (Mã lỗi: ${INetSDK.GetLastError()})"))
+            }
+        } catch (t: Throwable) {
+            Result.failure(t)
+        } finally {
+            logout(handle)
         }
     }
 }

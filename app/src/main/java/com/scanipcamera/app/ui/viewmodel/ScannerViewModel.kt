@@ -184,6 +184,14 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun startCustomSubnetScan(customSubnetIp: String) {
+        viewModelScope.launch {
+            fetchWanInfo()
+            _scanMode.value = ScanMode.SUBNET_PING
+            scannerManager.startSubnetScan(customSubnetIp = customSubnetIp, clearExisting = false)
+        }
+    }
+
     fun setScanMode(mode: ScanMode) {
         _scanMode.value = mode
     }

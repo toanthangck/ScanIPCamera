@@ -11,9 +11,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,12 +28,19 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.scanipcamera.app.data.model.CameraDevice
+import com.scanipcamera.app.data.model.DeviceBrand
+import com.scanipcamera.app.data.model.DeviceCategory
 import com.scanipcamera.app.data.network.NetworkDiagnosticUtils
 import com.scanipcamera.app.data.network.PingResult
+import com.scanipcamera.app.data.network.PingStabilityResult
 import com.scanipcamera.app.data.network.PortStatus
+import com.scanipcamera.app.data.network.SecurityAuditResult
+import com.scanipcamera.app.data.scanner.DahuaNetSdkManager
+import com.scanipcamera.app.data.scanner.DevHddInfo
 import com.scanipcamera.app.ui.theme.StatusActive
 import com.scanipcamera.app.ui.theme.StatusInactive
 import kotlinx.coroutines.launch
@@ -44,7 +55,23 @@ fun DiagnosticDialog(
 
     var isChecking by remember { mutableStateOf(false) }
     var pingResult by remember { mutableStateOf<PingResult?>(null) }
+    var pingStability by remember { mutableStateOf<PingStabilityResult?>(null) }
     var portStatuses by remember { mutableStateOf<List<PortStatus>>(emptyList()) }
+
+    // Security Audit state
+    var isAuditingSecurity by remember { mutableStateOf(false) }
+    var securityAudit by remember { mutableStateOf<SecurityAuditResult?>(null) }
+
+    // Storage / HDD state
+    val isDahuaDevice = remember(device) {
+        device.brand == DeviceBrand.DAHUA || device.brand == DeviceBrand.IMOU ||
+        device.brand == DeviceBrand.KBVISION || device.category == DeviceCategory.NVR ||
+        device.category == DeviceCategory.DVR || device.verifiedOpenPorts.contains(37777)
+    }
+    var hddPassword by remember { mutableStateOf("admin12345") }
+    var isCheckingHdd by remember { mutableStateOf(false) }
+    var hddList by remember { mutableStateOf<List<DevHddInfo>?>(null) }
+    var hddMessage by remember { mutableStateOf<String?>(null) }
 
     // Standard camera ports list
     val defaultPorts = remember(device) {
@@ -79,11 +106,51 @@ fun DiagnosticDialog(
         isChecking = true
         coroutineScope.launch {
             pingResult = NetworkDiagnosticUtils.testPing(device.ipv4Address)
+            pingStability = NetworkDiagnosticUtils.testPingStability(
+                device.ipv4Address,
+                count = 4,
+                probePort = if (device.httpPort > 0) device.httpPort else 80
+            )
             portStatuses = NetworkDiagnosticUtils.checkCommonCameraPorts(
                 device.ipv4Address,
                 selectedPorts.toList().sorted()
             )
             isChecking = false
+        }
+    }
+
+    fun runSecurityAudit() {
+        isAuditingSecurity = true
+        coroutineScope.launch {
+            securityAudit = NetworkDiagnosticUtils.auditDefaultCredentials(
+                ip = device.ipv4Address,
+                sdkPort = if (device.sdkPort > 0) device.sdkPort else 37777,
+                isDahua = isDahuaDevice
+            )
+            isAuditingSecurity = false
+        }
+    }
+
+    fun runHddCheck() {
+        isCheckingHdd = true
+        hddMessage = null
+        coroutineScope.launch {
+            val res = DahuaNetSdkManager.queryHddState(
+                ip = device.ipv4Address,
+                port = if (device.sdkPort > 0) device.sdkPort else 37777,
+                user = "admin",
+                pass = hddPassword.trim()
+            )
+            res.onSuccess { list ->
+                hddList = list
+                if (list.isEmpty()) {
+                    hddMessage = "Không tìm thấy ổ cứng hoặc đầu ghi chưa gắn ổ cứng!"
+                }
+            }.onFailure { err ->
+                hddList = null
+                hddMessage = "Lỗi đọc ổ cứng: ${err.message}"
+            }
+            isCheckingHdd = false
         }
     }
 
@@ -198,6 +265,147 @@ fun DiagnosticDialog(
                                     text = pingResult?.message ?: "",
                                     fontSize = 11.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            if (pingStability != null) {
+                                Text(
+                                    text = "Độ trễ: ${pingStability?.avgLatencyMs}ms (Min: ${pingStability?.minLatencyMs}ms, Max: ${pingStability?.maxLatencyMs}ms) • Rớt gói: ${pingStability?.lossRatePercent}%",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = if ((pingStability?.lossRatePercent ?: 0) == 0) StatusActive else Color(0xFFDC2626),
+                                    modifier = Modifier.padding(top = 2.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // Security Audit Card
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = when {
+                            securityAudit?.isVulnerable == true -> Color(0xFFEF4444).copy(alpha = 0.12f)
+                            securityAudit?.isVulnerable == false -> Color(0xFF10B981).copy(alpha = 0.12f)
+                            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        }
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(10.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Security,
+                                    contentDescription = null,
+                                    tint = if (securityAudit?.isVulnerable == true) Color(0xFFDC2626) else MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Bảo mật mật khẩu",
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.5.sp
+                                )
+                            }
+                            FilledTonalButton(
+                                onClick = { runSecurityAudit() },
+                                enabled = !isAuditingSecurity,
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                modifier = Modifier.height(28.dp)
+                            ) {
+                                if (isAuditingSecurity) {
+                                    CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                                } else {
+                                    Text("Kiểm tra pass mặc định", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                        }
+                        if (securityAudit != null) {
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = securityAudit?.message ?: "",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (securityAudit?.isVulnerable == true) Color(0xFFDC2626) else Color(0xFF059669)
+                            )
+                        }
+                    }
+                }
+
+                // Storage / HDD Card
+                if (isDahuaDevice) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                        )
+                    ) {
+                        Column(modifier = Modifier.padding(10.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Storage,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = "Ổ cứng lưu trữ (Storage)",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.5.sp
+                                    )
+                                }
+                                FilledTonalButton(
+                                    onClick = { runHddCheck() },
+                                    enabled = !isCheckingHdd,
+                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                    modifier = Modifier.height(28.dp)
+                                ) {
+                                    if (isCheckingHdd) {
+                                        CircularProgressIndicator(modifier = Modifier.size(14.dp), strokeWidth = 2.dp)
+                                    } else {
+                                        Text("Kiểm tra ổ cứng", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                            if (hddList != null && hddList!!.isNotEmpty()) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                hddList!!.forEach { disk ->
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text(
+                                            text = "Ổ ${disk.index}: ${String.format(java.util.Locale.US, "%.1f GB", disk.totalGb)} (Trống ${String.format(java.util.Locale.US, "%.1f GB", disk.freeGb)})",
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Medium
+                                        )
+                                        Text(
+                                            text = disk.statusText,
+                                            fontSize = 11.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (disk.status == 0) StatusActive else Color(0xFFDC2626)
+                                        )
+                                    }
+                                }
+                            } else if (hddMessage != null) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Text(
+                                    text = hddMessage!!,
+                                    fontSize = 11.sp,
+                                    color = MaterialTheme.colorScheme.error,
+                                    fontWeight = FontWeight.Medium
                                 )
                             }
                         }

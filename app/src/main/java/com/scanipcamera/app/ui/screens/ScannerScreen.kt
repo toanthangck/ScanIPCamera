@@ -75,6 +75,7 @@ fun ScannerScreen(
     var showHandoverDialog by remember { mutableStateOf(false) }
     var showSiteProjectsDialog by remember { mutableStateOf(false) }
     var showGoogleSyncDialog by remember { mutableStateOf(false) }
+    var customSubnetInput by remember { mutableStateOf("") }
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -500,6 +501,37 @@ fun ScannerScreen(
                                 Icon(imageVector = Icons.Default.NetworkCheck, contentDescription = null, modifier = Modifier.size(14.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(text = "Test Port WAN", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+
+                        HorizontalDivider(modifier = Modifier.padding(vertical = 6.dp), color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+
+                        // Row 3: Custom Subnet / Multi-VLAN scanning input
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            OutlinedTextField(
+                                value = customSubnetInput,
+                                onValueChange = { customSubnetInput = it },
+                                placeholder = { Text("Quét dải IP khác (VD: 192.168.2.1)", fontSize = 11.sp) },
+                                singleLine = true,
+                                modifier = Modifier.weight(1f).height(48.dp)
+                            )
+                            FilledTonalButton(
+                                onClick = {
+                                    if (customSubnetInput.isNotBlank()) {
+                                        viewModel.startCustomSubnetScan(customSubnetInput)
+                                    }
+                                },
+                                enabled = customSubnetInput.isNotBlank() && !isScanning,
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                modifier = Modifier.height(44.dp)
+                            ) {
+                                Icon(imageVector = Icons.Default.Search, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Quét dải", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                         }
                     }

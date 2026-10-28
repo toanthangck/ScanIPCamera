@@ -162,6 +162,18 @@ class DahuaConfigurator(
         targetIp: String,
         newPassword: String
     ): Result<String> = withContext(Dispatchers.IO) {
+        // 0. Try official Dahua NetSDK native InitDevAccount
+        val netSdkRes = com.scanipcamera.app.data.scanner.DahuaNetSdkManager.initDeviceAccount(
+            mac = macAddress,
+            targetIp = targetIp,
+            username = "admin",
+            password = newPassword
+        )
+        if (netSdkRes.isSuccess) {
+            return@withContext netSdkRes
+        }
+
+        // 1. Fallback to UDP broadcast/unicast client.initDevice
         var socket: DatagramSocket? = null
         try {
             socket = DatagramSocket().apply {

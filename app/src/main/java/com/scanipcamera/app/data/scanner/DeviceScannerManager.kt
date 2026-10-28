@@ -245,13 +245,18 @@ class DeviceScannerManager(private val context: Context) {
         }
     }
 
-    suspend fun startSubnetScan(clearExisting: Boolean = false) {
+    suspend fun startSubnetScan(customSubnetIp: String? = null, clearExisting: Boolean = false) {
         if (_isScanning.value) return
 
-        refreshWifiInfo()
-        val currentIp = _wifiInfo.value.ipAddress.ifBlank { networkUtils.getLocalIpAddress() ?: "" }
-        if (currentIp.isBlank()) {
-            Log.w(TAG, "Cannot start subnet scan: No local IP found")
+        val targetIp = if (!customSubnetIp.isNullOrBlank()) {
+            customSubnetIp.trim()
+        } else {
+            refreshWifiInfo()
+            _wifiInfo.value.ipAddress.ifBlank { networkUtils.getLocalIpAddress() ?: "" }
+        }
+
+        if (targetIp.isBlank()) {
+            Log.w(TAG, "Cannot start subnet scan: No local IP or custom subnet found")
             return
         }
 
@@ -267,7 +272,7 @@ class DeviceScannerManager(private val context: Context) {
             coroutineScope {
                 val scope = this
                 subnetScanner.scanSubnet(
-                    localIp = currentIp,
+                    localIp = targetIp,
                     onProgress = { current, total ->
                         _scanProgress.value = Pair(current, total)
                     },
