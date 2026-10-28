@@ -2,15 +2,24 @@ package com.scanipcamera.app.data.scanner
 
 import android.util.Log
 import com.company.NetSDK.CB_fSearchDevicesCB
+import com.company.NetSDK.CtrlType
 import com.company.NetSDK.DEVICE_IP_SEARCH_INFO
 import com.company.NetSDK.DEVICE_NET_INFO_EX
+import com.company.NetSDK.EM_LOGIN_SPAC_CAP_TYPE
 import com.company.NetSDK.INetSDK
+import com.company.NetSDK.NET_DEVICEINFO_Ex
+import com.company.NetSDK.NET_IN_LOGIN_WITH_HIGHLEVEL_SECURITY
+import com.company.NetSDK.NET_OUT_LOGIN_WITH_HIGHLEVEL_SECURITY
 import com.company.NetSDK.NET_PARAM
+import com.company.NetSDK.NET_TIME
 import com.scanipcamera.app.data.model.CameraDevice
 import com.scanipcamera.app.data.model.DeviceBrand
 import com.scanipcamera.app.data.model.DeviceCategory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 /**
  * High-performance wrapper around Dahua's official NetSDK (libnetsdk.so / INetSDK.jar).
@@ -207,6 +216,155 @@ object DahuaNetSdkManager {
             ok
         } catch (t: Throwable) {
             Log.e(TAG, "ModifyDevice failed", t)
+            false
+        }
+    }
+
+    fun login(ip: String, port: Int = 37777, username: String = "admin", password: String = ""): Long {
+        if (!init()) return 0L
+        try {
+            val stuIn = NET_IN_LOGIN_WITH_HIGHLEVEL_SECURITY().apply {
+                val ipBytes = ip.trim().toByteArray(Charsets.UTF_8)
+                System.arraycopy(ipBytes, 0, szIP, 0, minOf(ipBytes.size, szIP.size))
+                nPort = port
+                val userBytes = username.trim().toByteArray(Charsets.UTF_8)
+                System.arraycopy(userBytes, 0, szUserName, 0, minOf(userBytes.size, szUserName.size))
+                val pwdBytes = password.trim().toByteArray(Charsets.UTF_8)
+                System.arraycopy(pwdBytes, 0, szPassword, 0, minOf(pwdBytes.size, szPassword.size))
+                emSpecCap = EM_LOGIN_SPAC_CAP_TYPE.EM_LOGIN_SPEC_CAP_TCP
+            }
+            val stuOut = NET_OUT_LOGIN_WITH_HIGHLEVEL_SECURITY()
+            val handle = INetSDK.LoginWithHighLevelSecurity(stuIn, stuOut)
+            if (handle != 0L) return handle
+
+            val devInfo = NET_DEVICEINFO_Ex()
+            return INetSDK.LoginEx2(ip.trim(), port, username.trim(), password.trim(), 0, null, devInfo, 0)
+        } catch (t: Throwable) {
+            Log.e(TAG, "Login failed for $ip", t)
+            return 0L
+        }
+    }
+
+    fun logout(handle: Long) {
+        if (handle != 0L) {
+            try {
+                INetSDK.Logout(handle)
+            } catch (t: Throwable) {
+                Log.w(TAG, "Logout error: ${t.message}")
+            }
+        }
+    }
+
+    suspend fun queryDeviceTime(
+        ip: String,
+        port: Int = 37777,
+        user: String = "admin",
+        pass: String = ""
+    ): Result<String> = withContext(Dispatchers.IO) {
+        val handle = login(ip, port, user, pass)
+        if (handle == 0L) {
+            return@withContext Result.failure(Exception("Đăng nhập thất bại (Mã lỗi: ${INetSDK.GetLastError()})"))
+        }
+        try {
+            val netTime = NET_TIME()
+            val ok = INetSDK.QueryDeviceTime(handle, netTime, 3000)
+            if (ok) {
+                val formatted = String.format(
+                    Locale.US,
+                    "%04d-%02d-%02d %02d:%02d:%02d",
+                    netTime.dwYear, netTime.dwMonth, netTime.dwDay,
+                    netTime.dwHour, netTime.dwMinute, netTime.dwSecond
+                )
+                Result.success(formatted)
+            } else {
+                Result.failure(Exception("Không đọc được giờ (Mã lỗi: ${INetSDK.GetLastError()})"))
+            }
+        } catch (t: Throwable) {
+            Result.failure(t)
+        } finally {
+            logout(handle)
+        }
+    }
+
+    suspend fun syncDeviceTime(
+        ip: String,
+        port: Int = 37777,
+        user: String = "admin",
+        pass: String = "",
+        targetDate: Date = Date()
+    ): Result<String> = withContext(Dispatchers.IO) {
+        val handle = login(ip, port, user, pass)
+        if (handle == 0L) {
+            return@withContext Result.failure(Exception("Đăng nhập thất bại (Mã lỗi: ${INetSDK.GetLastError()})"))
+        }
+        try {
+            val cal = Calendar.getInstance().apply { time = targetDate }
+            val netTime = NET_TIME().apply {
+                setTime(
+                    cal.get(Calendar.YEAR).toLong(),
+                    (cal.get(Calendar.MONTH) + 1).toLong(),
+                    cal.get(Calendar.DAY_OF_MONTH).toLong(),
+                    cal.get(Calendar.HOUR_OF_DAY).toLong(),
+                    cal.get(Calendar.MINUTE).toLong(),
+                    cal.get(Calendar.SECOND).toLong()
+                )
+            }
+            val ok = INetSDK.SetupDeviceTime(handle, netTime)
+            if (ok) {
+                val formatted = String.format(
+                    Locale.US,
+                    "%04d-%02d-%02d %02d:%02d:%02d",
+                    netTime.dwYear, netTime.dwMonth, netTime.dwDay,
+                    netTime.dwHour, netTime.dwMinute, netTime.dwSecond
+                )
+                Result.success(formatted)
+            } else {
+                Result.failure(Exception("Không thể đồng bộ giờ (Mã lỗi: ${INetSDK.GetLastError()})"))
+            }
+        } catch (t: Throwable) {
+            Result.failure(t)
+        } finally {
+            logout(handle)
+        }
+    }
+
+    suspend fun rebootDevice(
+        ip: String,
+        port: Int = 37777,
+        user: String = "admin",
+        pass: String = ""
+    ): Result<String> = withContext(Dispatchers.IO) {
+        val handle = login(ip, port, user, pass)
+        if (handle == 0L) {
+            return@withContext Result.failure(Exception("Đăng nhập thất bại (Mã lỗi: ${INetSDK.GetLastError()})"))
+        }
+        try {
+            val ok = INetSDK.ControlDevice(handle, CtrlType.SDK_CTRL_REBOOT, null, 3000)
+            if (ok) {
+                Result.success("Khởi động lại thiết bị Dahua thành công qua NetSDK!")
+            } else {
+                Result.failure(Exception("Lệnh khởi động lại thất bại (Mã lỗi: ${INetSDK.GetLastError()})"))
+            }
+        } catch (t: Throwable) {
+            Result.failure(t)
+        } finally {
+            logout(handle)
+        }
+    }
+
+    fun ptzControl(
+        loginHandle: Long,
+        channel: Int,
+        command: Int,
+        param1: Byte = 4,
+        param2: Byte = 4,
+        bStop: Boolean = false
+    ): Boolean {
+        if (loginHandle == 0L) return false
+        return try {
+            INetSDK.SDKPTZControl(loginHandle, channel, command, param1, param2, 0.toByte(), bStop)
+        } catch (t: Throwable) {
+            Log.e(TAG, "ptzControl failed", t)
             false
         }
     }

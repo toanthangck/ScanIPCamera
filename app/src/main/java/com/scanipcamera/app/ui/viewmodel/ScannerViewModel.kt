@@ -148,6 +148,9 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
     private val _timeSyncDevice = MutableStateFlow<CameraDevice?>(null)
     val timeSyncDevice: StateFlow<CameraDevice?> = _timeSyncDevice
 
+    private val _playbackDevice = MutableStateFlow<CameraDevice?>(null)
+    val playbackDevice: StateFlow<CameraDevice?> = _playbackDevice
+
     private val _showDefaultCredentialsDialog = MutableStateFlow(false)
     val showDefaultCredentialsDialog: StateFlow<Boolean> = _showDefaultCredentialsDialog
 
@@ -240,6 +243,14 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
 
     fun closeLiveViewDialog() {
         _liveViewDevice.value = null
+    }
+
+    fun openPlaybackDialog(device: CameraDevice) {
+        _playbackDevice.value = device
+    }
+
+    fun closePlaybackDialog() {
+        _playbackDevice.value = null
     }
 
     fun openDiagnosticDialog(device: CameraDevice) {

@@ -52,6 +52,7 @@ fun ScannerScreen(
     val activatingDevice by viewModel.activatingDevice.collectAsState()
     val rtspDevice by viewModel.rtspDevice.collectAsState()
     val liveViewDevice by viewModel.liveViewDevice.collectAsState()
+    val playbackDevice by viewModel.playbackDevice.collectAsState()
     val diagnosticDevice by viewModel.diagnosticDevice.collectAsState()
     val wanPortDevice by viewModel.wanPortDevice.collectAsState()
     val rebootingDevice by viewModel.rebootingDevice.collectAsState()
@@ -762,6 +763,16 @@ fun ScannerScreen(
             defaultUser = defaultUser,
             defaultPassword = defaultPassword,
             onDismiss = { viewModel.closeLiveViewDialog() }
+        )
+    }
+
+    // Dahua Playback & Record Download Dialog
+    playbackDevice?.let { device ->
+        com.scanipcamera.app.ui.components.DahuaPlaybackDialog(
+            device = device,
+            defaultUser = defaultUser,
+            defaultPassword = defaultPassword,
+            onDismiss = { viewModel.closePlaybackDialog() }
         )
     }
 

@@ -517,7 +517,14 @@ class CameraConfigService {
         try {
             when (device.brand) {
                 DeviceBrand.DAHUA, DeviceBrand.IMOU, DeviceBrand.KBVISION -> {
-                    // Try global.cgi
+                    // Try Dahua NetSDK queryDeviceTime first
+                    val sdkPort = if (device.sdkPort > 0) device.sdkPort else 37777
+                    val netSdkRes = com.scanipcamera.app.data.scanner.DahuaNetSdkManager.queryDeviceTime(device.ipv4Address, sdkPort, user, pass)
+                    if (netSdkRes.isSuccess) {
+                        return@withContext netSdkRes
+                    }
+
+                    // Fallback to global.cgi
                     val url = "http://${device.ipv4Address}:${device.httpPort}/cgi-bin/global.cgi?action=getCurrentTime"
                     val res = sendHttpRequest(url, "GET", null, user, pass)
                     if (res.isSuccess) {
@@ -610,6 +617,13 @@ class CameraConfigService {
         try {
             when (device.brand) {
                 DeviceBrand.DAHUA, DeviceBrand.IMOU, DeviceBrand.KBVISION -> {
+                    // Try Dahua NetSDK SetupDeviceTime first
+                    val sdkPort = if (device.sdkPort > 0) device.sdkPort else 37777
+                    val netSdkRes = com.scanipcamera.app.data.scanner.DahuaNetSdkManager.syncDeviceTime(device.ipv4Address, sdkPort, user, pass, now)
+                    if (netSdkRes.isSuccess) {
+                        return@withContext Result.success("Đã đồng bộ giờ Camera thành công: ${netSdkRes.getOrNull()} (NetSDK)")
+                    }
+
                     // Dahua CGI Time Sync
                     val encodedTime = java.net.URLEncoder.encode(dahuaFormat, "UTF-8")
                     val url = "http://${device.ipv4Address}:${device.httpPort}/cgi-bin/configManager.cgi?action=setConfig&General.LocalTime=$encodedTime"

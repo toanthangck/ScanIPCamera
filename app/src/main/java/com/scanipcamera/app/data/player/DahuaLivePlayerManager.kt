@@ -31,6 +31,9 @@ class DahuaLivePlayerManager {
     var channelCount: Int = 1
         private set
 
+    val currentLoginHandle: Long get() = loginHandle
+    val currentPlayPort: Int get() = playPort
+
     init {
         DahuaNetSdkManager.init()
     }
@@ -192,5 +195,33 @@ class DahuaLivePlayerManager {
             IPlaySDK.PLAYReleasePort(playPort)
             playPort = -1
         }
+    }
+
+    fun captureSnapshot(outputFile: java.io.File): Boolean {
+        if (playPort < 0) return false
+        outputFile.parentFile?.mkdirs()
+        val ret = IPlaySDK.PLAYCatchPicEx(
+            playPort,
+            outputFile.absolutePath,
+            com.company.PlaySDK.Constants.PicFormat_JPEG
+        )
+        return ret != 0
+    }
+
+    fun ptzControl(
+        channel: Int,
+        command: Int,
+        speed: Int = 4,
+        bStop: Boolean = false
+    ): Boolean {
+        if (loginHandle == 0L) return false
+        return DahuaNetSdkManager.ptzControl(
+            loginHandle = loginHandle,
+            channel = channel,
+            command = command,
+            param1 = speed.toByte(),
+            param2 = speed.toByte(),
+            bStop = bStop
+        )
     }
 }

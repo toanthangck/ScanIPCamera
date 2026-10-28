@@ -208,6 +208,18 @@ class DahuaConfigurator(
         device: CameraDevice,
         password: String
     ): Result<String> = withContext(Dispatchers.IO) {
+        // 0. Try official Dahua NetSDK native reboot
+        val sdkPort = if (device.sdkPort > 0) device.sdkPort else 37777
+        val netSdkRes = com.scanipcamera.app.data.scanner.DahuaNetSdkManager.rebootDevice(
+            ip = device.ipv4Address,
+            port = sdkPort,
+            user = "admin",
+            pass = password
+        )
+        if (netSdkRes.isSuccess) {
+            return@withContext netSdkRes
+        }
+
         var socket: DatagramSocket? = null
         try {
             socket = DatagramSocket().apply {
