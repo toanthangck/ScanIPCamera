@@ -17,7 +17,7 @@ import java.util.UUID
 object DeviceDeepProbe {
 
     private const val TAG = "DeviceDeepProbe"
-    private const val TIMEOUT_MS = 450
+    private const val TIMEOUT_MS = 250
 
     /**
      * Actively probes an IP using unicast UDP (Dahua, SADP) and HTTP/ONVIF to reliably extract
@@ -60,8 +60,8 @@ object DeviceDeepProbe {
             return@withContext mergeDevices(hikDevice, hikHttpDevice)
         }
 
-        // 5. Try ONVIF SOAP GetDeviceInformation on open ports (80, 8080, 8899, 5000)
-        val testPorts = (knownPorts + listOf(80, 8080, 8899, 5000)).distinct()
+        // 5. Try ONVIF SOAP GetDeviceInformation on open ports
+        val testPorts = (knownPorts.filter { it in setOf(80, 8080, 8899, 5000) }.ifEmpty { listOf(80) }).distinct()
         for (port in testPorts) {
             val onvifDevice = probeOnvifSoap(ip, port)
             if (onvifDevice != null && (onvifDevice.macAddress.isNotBlank() || onvifDevice.serialNumber.isNotBlank())) {

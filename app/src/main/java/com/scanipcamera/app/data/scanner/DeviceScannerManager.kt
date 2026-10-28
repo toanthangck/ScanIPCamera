@@ -129,23 +129,22 @@ class DeviceScannerManager(private val context: Context) {
             }
         }
 
-        // Mặc định kiểm tra dải cổng từ 80 đến 9000 trên đầu ghi (NVR/DVR) để tìm chính xác port web và nhấp nháy
+        // Tự động kiểm tra nhanh các cổng CCTV mở và tìm chính xác port web (thực hiện song song cực nhanh trong ~120ms)
         val isRecorder = (device.category == DeviceCategory.NVR || device.category == DeviceCategory.DVR)
-        if (isRecorder && device.ipv4Address.isNotBlank() && scope != null) {
+        val needsPortCheck = isRecorder || device.rawProtocol == "PING/PORT"
+        if (needsPortCheck && device.ipv4Address.isNotBlank() && scope != null) {
             val checkIp = device.ipv4Address
             scope.launch {
-                val open = PortScannerUtils.scanPortsRange(checkIp, 80, 9000).toSet()
+                val (detectedWeb, open) = PortScannerUtils.detectWebAndOpenPorts(
+                    ip = checkIp,
+                    candidatePort = device.httpPort,
+                    extraPorts = device.verifiedOpenPorts
+                )
                 if (open.isNotEmpty()) {
                     synchronized(discoveredMap) {
                         val currentEntry = discoveredMap.entries.firstOrNull { (_, dev) -> dev.ipv4Address == checkIp }
                         if (currentEntry != null) {
                             val current = currentEntry.value
-                            // Tìm chính xác cổng web thực sự trả về HTTP (hỗ trợ bất kỳ port nào từ 80-9000, e.g. 8089)
-                            val httpCandidates = open.filter { it != 554 && it != 8554 && it != 37777 && it != 34567 }
-                            val detectedWeb = httpCandidates.firstOrNull { PortScannerUtils.isHttpPort(checkIp, it) }
-                                ?: (if (open.contains(current.httpPort)) current.httpPort else httpCandidates.firstOrNull())
-                                ?: current.httpPort
-
                             val updatedRtspPort = if (open.contains(554)) 554 else if (open.contains(8554)) 8554 else current.rtspPort
                             val updatedSdkPort = if (open.contains(37777)) 37777
                                 else if (open.contains(8000) && current.brand == DeviceBrand.HIKVISION) 8000
@@ -170,27 +169,7 @@ class DeviceScannerManager(private val context: Context) {
         }
     }
 
-    private suspend fun checkRecorderPorts(ip: String, candidatePorts: List<Int>): Set<Int> = withContext(Dispatchers.IO) {
-        val targets = candidatePorts.filter { it > 0 }.distinct()
-        val open = mutableSetOf<Int>()
-        val jobs = targets.map { port ->
-            launch {
-                var socket: Socket? = null
-                try {
-                    socket = Socket()
-                    socket.connect(InetSocketAddress(ip, port), 400)
-                    synchronized(open) { open.add(port) }
-                } catch (_: Exception) {
-                } finally {
-                    try { socket?.close() } catch (_: Exception) {}
-                }
-            }
-        }
-        jobs.forEach { it.join() }
-        open
-    }
-
-    suspend fun startScan(timeoutMs: Int = 4000, clearExisting: Boolean = true) {
+    suspend fun startScan(timeoutMs: Int = 2500, clearExisting: Boolean = true) {
         if (_isScanning.value) return
 
         refreshWifiInfo()

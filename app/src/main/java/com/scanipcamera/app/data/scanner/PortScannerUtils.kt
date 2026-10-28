@@ -1,6 +1,7 @@
 package com.scanipcamera.app.data.scanner
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
@@ -17,7 +18,7 @@ object PortScannerUtils {
         8008, 8082, 8085, 8090, 8686, 9000, 554, 8554, 37777, 34567, 8899, 443, 8443
     )
 
-    fun isHttpPort(ip: String, port: Int, timeoutMs: Int = 300): Boolean {
+    fun isHttpPort(ip: String, port: Int, timeoutMs: Int = 200): Boolean {
         var socket: Socket? = null
         try {
             socket = Socket()
@@ -44,18 +45,63 @@ object PortScannerUtils {
         return false
     }
 
+    /**
+     * Ultra-fast parallel detection of open CCTV ports and exact HTTP web port.
+     * Completes in ~120-150ms total by checking all priority CCTV ports concurrently.
+     */
+    suspend fun detectWebAndOpenPorts(
+        ip: String,
+        candidatePort: Int = 80,
+        extraPorts: Collection<Int> = emptyList(),
+        timeoutMs: Int = 120
+    ): Pair<Int, Set<Int>> = withContext(Dispatchers.IO) {
+        val open = Collections.synchronizedSet(mutableSetOf<Int>())
+        val targets = (listOf(candidatePort) + extraPorts + COMMON_CCTV_PORTS.toList())
+            .filter { it in 1..65535 }
+            .distinct()
+
+        coroutineScope {
+            targets.map { port ->
+                launch {
+                    var s: Socket? = null
+                    try {
+                        s = Socket()
+                        s.connect(InetSocketAddress(ip, port), timeoutMs)
+                        open.add(port)
+                    } catch (_: Exception) {
+                    } finally {
+                        try { s?.close() } catch (_: Exception) {}
+                    }
+                }
+            }.joinAll()
+        }
+
+        val openSnapshot = open.toSet()
+
+        // Filter out purely video/SDK streaming ports (554, 8554, 37777, 34567) to find web candidates
+        val webCandidates = openSnapshot.filter { it != 554 && it != 8554 && it != 37777 && it != 34567 }
+
+        // Find exact HTTP response
+        val detectedWeb = when {
+            candidatePort in webCandidates && isHttpPort(ip, candidatePort, 150) -> candidatePort
+            else -> webCandidates.firstOrNull { isHttpPort(ip, it, 150) }
+                ?: (if (candidatePort in openSnapshot) candidatePort else webCandidates.firstOrNull() ?: candidatePort)
+        }
+
+        Pair(if (detectedWeb > 0) detectedWeb else 80, openSnapshot)
+    }
+
     suspend fun scanPortsRange(
         ip: String,
         minPort: Int = 80,
         maxPort: Int = 9000,
-        timeoutMs: Int = 150,
-        concurrency: Int = 80
+        timeoutMs: Int = 100,
+        concurrency: Int = 100
     ): List<Int> = withContext(Dispatchers.IO) {
         val open = Collections.synchronizedList(mutableListOf<Int>())
         val semaphore = Semaphore(concurrency)
 
-        // 1. Quét ưu tiên các cổng CCTV thông dụng trước (Phát hiện ngay trong ~50ms)
-        // Luôn bao gồm các cổng SDK chuẩn CCTV 37777, 34567 ngoài dải 80..9000
+        // 1. Quét ưu tiên các cổng CCTV thông dụng trước (Phát hiện ngay trong ~60ms)
         val prioritySet = (COMMON_CCTV_PORTS.filter { it in minPort..maxPort } + listOf(37777, 34567, 554, 8000)).toSet()
         val priorityJobs = prioritySet.map { port ->
             launch {
@@ -74,7 +120,7 @@ object PortScannerUtils {
         }
         priorityJobs.joinAll()
 
-        // 2. Quét toàn bộ dải cổng còn lại từ 80 đến 9000
+        // 2. Quét các cổng còn lại nếu cần
         val remaining = (minPort..maxPort).filter { it !in prioritySet }
         val remainingJobs = remaining.map { port ->
             launch {

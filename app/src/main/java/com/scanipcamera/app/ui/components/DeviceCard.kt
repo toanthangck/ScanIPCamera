@@ -63,34 +63,8 @@ fun DeviceCard(
 
     val isRecorder = (device.category == DeviceCategory.NVR || device.category == DeviceCategory.DVR)
 
-    var openPorts by remember(device.ipv4Address, device.verifiedOpenPorts) {
-        mutableStateOf(device.verifiedOpenPorts)
-    }
-
-    var activeHttpPort by remember(device.httpPort) {
-        mutableStateOf(device.httpPort)
-    }
-
-    // Tự động quét dải cổng 80..9000 trên thiết bị để phát hiện chính xác port web
-    LaunchedEffect(device.ipv4Address) {
-        if (device.ipv4Address.isNotBlank()) {
-            withContext(Dispatchers.IO) {
-                val open = PortScannerUtils.scanPortsRange(device.ipv4Address, 80, 9000).toSet()
-                if (open.isNotEmpty()) {
-                    openPorts = openPorts + open
-                    // Tìm chính xác cổng web thực sự trả về HTTP (hỗ trợ bất kỳ port nào từ 80-9000, e.g. 8089)
-                    val httpCandidates = open.filter { it != 554 && it != 8554 && it != 37777 && it != 34567 }
-                    val detectedWeb = httpCandidates.firstOrNull { PortScannerUtils.isHttpPort(device.ipv4Address, it) }
-                        ?: (if (open.contains(device.httpPort)) device.httpPort else httpCandidates.firstOrNull())
-                        ?: activeHttpPort
-
-                    if (detectedWeb != activeHttpPort) {
-                        activeHttpPort = detectedWeb
-                    }
-                }
-            }
-        }
-    }
+    val openPorts = device.verifiedOpenPorts
+    val activeHttpPort = if (device.httpPort > 0) device.httpPort else 80
 
     // Hiệu ứng nhấp nháy cho cổng đầu ghi được mở
     val infiniteTransition = rememberInfiniteTransition(label = "nvr_port_blink")
