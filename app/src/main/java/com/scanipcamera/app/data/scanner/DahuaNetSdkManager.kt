@@ -106,8 +106,11 @@ object DahuaNetSdkManager {
 
         val (category, detectedChannels) = CameraDevice.detectCategoryAndChannels(model, "$vendor $serialNo")
         val finalChannels = if (channels > 0) channels else detectedChannels
-        val brand = DeviceBrand.fromModelOrVendor("$vendor $model $serialNo").let {
-            if (it == DeviceBrand.UNKNOWN || it == DeviceBrand.ONVIF) DeviceBrand.DAHUA else it
+        val brand = DeviceBrand.fromModelOrVendor("$vendor $model $serialNo $mac").let {
+            if (it == DeviceBrand.UNKNOWN || it == DeviceBrand.ONVIF) {
+                val macBrand = DeviceBrand.fromMacAddress(mac)
+                if (macBrand != DeviceBrand.UNKNOWN) macBrand else DeviceBrand.DAHUA
+            } else it
         }
 
         val isActivated = info.byInitStatus != 1.toByte()

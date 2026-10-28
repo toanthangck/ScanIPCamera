@@ -82,8 +82,16 @@ class DeviceScannerManager(private val context: Context) {
 
                 val mergedMac = if (existing.macAddress.isNotBlank()) existing.macAddress else device.macAddress
                 val mergedSerial = if (existing.serialNumber.isNotBlank()) existing.serialNumber else device.serialNumber
-                val mergedBrand = if (existing.brand != DeviceBrand.ONVIF && existing.brand != DeviceBrand.UNKNOWN) existing.brand else device.brand
-                val mergedModel = if (existing.model != "ONVIF Camera" && existing.model != "Dahua Device" && existing.model.isNotBlank()) existing.model else device.model
+                val mergedBrand = when {
+                    device.brand == DeviceBrand.IMOU || device.brand == DeviceBrand.KBVISION || device.brand == DeviceBrand.EZVIZ -> device.brand
+                    existing.brand != DeviceBrand.ONVIF && existing.brand != DeviceBrand.UNKNOWN -> existing.brand
+                    else -> device.brand
+                }
+                val mergedModel = when {
+                    device.model.contains("IMOU", ignoreCase = true) || device.model.contains("Camera IMOU", ignoreCase = true) -> device.model
+                    existing.model != "ONVIF Camera" && existing.model != "Dahua Device" && existing.model.isNotBlank() -> existing.model
+                    else -> device.model
+                }
                 val mergedCategory = if (existing.category != DeviceCategory.CAMERA) existing.category else device.category
                 val mergedChannels = if (existing.channelCount > 0) existing.channelCount else device.channelCount
                 val mergedProtocol = if (device.rawProtocol == "SADP" || device.rawProtocol == "DHIP") device.rawProtocol else existing.rawProtocol

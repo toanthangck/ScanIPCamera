@@ -261,12 +261,16 @@ class DahuaDiscoveryScanner(private val networkInterface: NetworkInterface? = nu
             val dhcpVal = findValueInJson(root, "dhcp", "DHCP")
             val isDhcp = (dhcpVal.equals("true", ignoreCase = true) || dhcpVal == "1")
 
-            val brand = DeviceBrand.fromModelOrVendor("$machineName $serialNo")
+            var brand = DeviceBrand.fromModelOrVendor("$machineName $serialNo $mac")
+            if (brand == DeviceBrand.UNKNOWN || brand == DeviceBrand.ONVIF) {
+                val macBrand = DeviceBrand.fromMacAddress(mac)
+                brand = if (macBrand != DeviceBrand.UNKNOWN) macBrand else DeviceBrand.DAHUA
+            }
             val (category, channels) = CameraDevice.detectCategoryAndChannels(machineName, serialNo)
 
             return CameraDevice(
                 id = if (mac.isNotBlank()) mac else (if (serialNo.isNotBlank()) serialNo else hostIp),
-                brand = if (brand == DeviceBrand.ONVIF || brand == DeviceBrand.UNKNOWN) DeviceBrand.DAHUA else brand,
+                brand = brand,
                 category = category,
                 channelCount = channels,
                 model = machineName,

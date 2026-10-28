@@ -37,7 +37,7 @@ data class CameraDevice(
         fun detectCategoryAndChannels(model: String, description: String = ""): Pair<DeviceCategory, Int> {
             val text = ("$model $description").uppercase()
 
-            // 0. Explicit non-CCTV devices (Routers, PCs, Phones, Printers, TVs, Gateways, NAS, Smart Plugs)
+            // 0. Explicit non-CCTV devices (Routers, PCs, Phones, Printers, TVs, Gateways, NAS, Servers, VMs)
             val isExplicitOther = text.contains("ROUTER") ||
                     text.contains("GATEWAY") ||
                     text.contains("MODEM") ||
@@ -53,6 +53,14 @@ data class CameraDevice(
                     text.contains("SYNOLOGY") ||
                     text.contains("QNAP") ||
                     text.contains("SERVER") ||
+                    text.contains("MÁY CHỦ") ||
+                    text.contains("UVICORN") ||
+                    text.contains("NGINX") ||
+                    text.contains("APACHE") ||
+                    text.contains("CAMDDNS") ||
+                    text.contains("VIRTUAL") ||
+                    text.contains("VMWARE") ||
+                    text.contains("PROXMOX") ||
                     text.contains("THIẾT BỊ MẠNG") ||
                     text.contains("NETWORK DEVICE")
 
@@ -86,6 +94,12 @@ data class CameraDevice(
                     text.contains("CAM") ||
                     text.contains("IPC") ||
                     text.contains("ONVIF") ||
+                    text.contains("IMOU") ||
+                    text.contains("LECHANGE") ||
+                    text.contains("RANGER") ||
+                    text.contains("CRUISER") ||
+                    text.contains("CUE") ||
+                    text.contains("PAJA") ||
                     text.contains("BULLET") ||
                     text.contains("DOME") ||
                     text.contains("TURRET") ||
@@ -97,7 +111,8 @@ data class CameraDevice(
                     Regex("(?:DHI-|DH-|KX-)IPC").containsMatchIn(text) ||
                     Regex("IPC-[A-Z0-9]+").containsMatchIn(text) ||
                     Regex("CS-[A-Z0-9]+").containsMatchIn(text) ||
-                    Regex("IPC\\d{3,4}").containsMatchIn(text)
+                    Regex("IPC\\d{3,4}").containsMatchIn(text) ||
+                    Regex("(?:\\b|[_-])[4-9][D|H|L|K][0-9A-Z]{5,}", RegexOption.IGNORE_CASE).containsMatchIn(text)
 
             val category = when {
                 isNvr -> DeviceCategory.NVR

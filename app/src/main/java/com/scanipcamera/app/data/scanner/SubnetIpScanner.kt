@@ -29,10 +29,11 @@ class SubnetIpScanner {
 
         // Common vendor MAC OUI prefixes (upper 3 bytes)
         private val DAHUA_OUIS = setOf(
-            "3C:EF:8C", "A0:BD:1D", "E0:50:8B", "4C:11:BF", "14:A7:8B",
+            "38:AF:29", "3C:EF:8C", "A0:BD:1D", "E0:50:8B", "4C:11:BF", "14:A7:8B",
             "BC:32:5F", "90:02:A9", "54:C4:15", "B8:F8:83", "70:B1:3D",
             "68:9C:E2", "40:2C:76", "E4:24:9C", "88:29:9C", "A8:9C:ED",
-            "6C:1C:71", "54:89:98", "F4:39:09", "64:DB:8B", "2C:26:17"
+            "6C:1C:71", "54:89:98", "F4:39:09", "64:DB:8B", "2C:26:17",
+            "00:1A:07", "04:CF:8C", "44:32:C8", "9C:14:63"
         )
         private val HIKVISION_OUIS = setOf(
             "44:19:B6", "C4:2F:90", "BC:54:36", "28:57:BE", "18:68:CB",
@@ -46,11 +47,35 @@ class SubnetIpScanner {
             "B0:D5:9D", "38:D2:69", "E4:AA:EC", "44:03:77", "D8:B0:4C"
         )
         private val IMOU_OUIS = setOf(
-            "D4:40:F0", "74:AC:B9", "5C:E2:8C", "3C:A6:2F"
+            "38:AF:29", "D4:40:F0", "74:AC:B9", "5C:E2:8C", "3C:A6:2F", "B4:0C:25"
         )
         private val UNIVIEW_OUIS = setOf(
             "00:0F:7C", "2C:6B:7D"
         )
+
+        fun getArpTable(): Map<String, String> {
+            val map = mutableMapOf<String, String>()
+            try {
+                BufferedReader(FileReader("/proc/net/arp")).use { reader ->
+                    var line: String?
+                    while (reader.readLine().also { line = it } != null) {
+                        val tokens = line!!.split("\\s+".toRegex())
+                        if (tokens.size >= 4) {
+                            val ip = tokens[0]
+                            val mac = tokens[3]
+                            if (mac != "00:00:00:00:00:00" && !mac.contains("00:00:00")) {
+                                map[ip] = mac.uppercase()
+                            }
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+            return map
+        }
+
+        fun getMacFromArp(ip: String): String {
+            return getArpTable()[ip] ?: ""
+        }
     }
 
     suspend fun scanSubnet(
@@ -85,33 +110,39 @@ class SubnetIpScanner {
 
                                 if (openPorts.isNotEmpty()) {
                                     val mac = arpMap[targetIp] ?: getMacFromArp(targetIp)
-                                    val (brand, modelName) = detectBrandAndModel(targetIp, openPorts, mac)
+                                    val (brand, modelName, serial) = detectBrandAndModel(targetIp, openPorts, mac)
 
-                                    val isGenuineCctv = openPorts.contains(554) ||
-                                            openPorts.contains(37777) ||
-                                            openPorts.contains(34567) ||
-                                            openPorts.contains(8899) ||
-                                            (brand != DeviceBrand.UNKNOWN && (openPorts.contains(8000) || mac.isNotBlank())) ||
-                                            brand == DeviceBrand.DAHUA || brand == DeviceBrand.HIKVISION
+                                    val hasServerIndicators = openPorts.contains(22) && !openPorts.contains(554) && !openPorts.contains(37777)
+                                    val isExplicitWebServer = modelName.contains("Server", ignoreCase = true) || modelName.contains("Máy chủ", ignoreCase = true)
+
+                                    val isGenuineCctv = !hasServerIndicators && !isExplicitWebServer && (
+                                        openPorts.contains(554) ||
+                                        openPorts.contains(37777) ||
+                                        openPorts.contains(34567) ||
+                                        openPorts.contains(8899) ||
+                                        (brand == DeviceBrand.HIKVISION && openPorts.contains(8000) && HIKVISION_OUIS.any { mac.startsWith(it, ignoreCase = true) }) ||
+                                        (brand != DeviceBrand.UNKNOWN && mac.isNotBlank() && (openPorts.contains(80) || openPorts.contains(8000)))
+                                    )
 
                                     if (isGenuineCctv) {
-                                        val (category, channels) = CameraDevice.detectCategoryAndChannels(modelName, "$brand $targetIp")
+                                        val (category, channels) = CameraDevice.detectCategoryAndChannels(modelName, "$brand $targetIp $serial")
                                         if (category != DeviceCategory.OTHER) {
                                             val detectedRtsp = if (openPorts.contains(554)) 554 else if (openPorts.contains(8554)) 8554 else 0
                                             val detectedSdk = when {
                                                 openPorts.contains(37777) -> 37777
                                                 openPorts.contains(8000) && brand == DeviceBrand.HIKVISION -> 8000
                                                 openPorts.contains(34567) -> 34567
-                                                brand == DeviceBrand.DAHUA || brand == DeviceBrand.KBVISION -> if (openPorts.contains(37777)) 37777 else 0
+                                                brand == DeviceBrand.DAHUA || brand == DeviceBrand.IMOU || brand == DeviceBrand.KBVISION -> if (openPorts.contains(37777)) 37777 else 0
                                                 else -> 0
                                             }
 
                                             val device = CameraDevice(
-                                                id = if (mac.isNotBlank()) mac else targetIp,
+                                                id = if (mac.isNotBlank()) mac else (if (serial.isNotBlank()) serial else targetIp),
                                                 brand = brand,
                                                 category = category,
                                                 channelCount = channels,
                                                 model = modelName,
+                                                serialNumber = serial,
                                                 macAddress = mac,
                                                 ipv4Address = targetIp,
                                                 httpPort = webPort,
@@ -162,23 +193,23 @@ class SubnetIpScanner {
         alive
     }
 
-    private fun detectBrandAndModel(ip: String, ports: Set<Int>, mac: String): Pair<DeviceBrand, String> {
+    private fun detectBrandAndModel(ip: String, ports: Set<Int>, mac: String): Triple<DeviceBrand, String, String> {
         // 1. MAC OUI matching
         if (mac.length >= 8) {
             val oui = mac.take(8).uppercase()
             when {
-                DAHUA_OUIS.contains(oui) -> return Pair(DeviceBrand.DAHUA, "Dahua Device")
-                HIKVISION_OUIS.contains(oui) -> return Pair(DeviceBrand.HIKVISION, "Hikvision Device")
-                EZVIZ_OUIS.contains(oui) -> return Pair(DeviceBrand.EZVIZ, "EZVIZ Device")
-                IMOU_OUIS.contains(oui) -> return Pair(DeviceBrand.IMOU, "IMOU Device")
-                UNIVIEW_OUIS.contains(oui) -> return Pair(DeviceBrand.UNIVIEW, "Uniview Device")
+                IMOU_OUIS.contains(oui) -> return Triple(DeviceBrand.IMOU, "Camera IMOU", "")
+                DAHUA_OUIS.contains(oui) -> return Triple(DeviceBrand.DAHUA, "Dahua Device", "")
+                HIKVISION_OUIS.contains(oui) -> return Triple(DeviceBrand.HIKVISION, "Hikvision Device", "")
+                EZVIZ_OUIS.contains(oui) -> return Triple(DeviceBrand.EZVIZ, "EZVIZ Device", "")
+                UNIVIEW_OUIS.contains(oui) -> return Triple(DeviceBrand.UNIVIEW, "Uniview Device", "")
             }
         }
 
         // 2. Active HTTP banner probe on web ports
         val webPorts = ports.filter { it in setOf(80, 8080, 8089, 8000, 8899) }
         for (port in webPorts) {
-            val bannerMatch = checkHttpBanner(ip, port)
+            val bannerMatch = checkHttpBanner(ip, port, mac)
             if (bannerMatch != null) {
                 return bannerMatch
             }
@@ -186,16 +217,24 @@ class SubnetIpScanner {
 
         // 3. Proprietary port matching
         return when {
-            ports.contains(37777) -> Pair(DeviceBrand.DAHUA, "Dahua Device")
-            ports.contains(34567) -> Pair(DeviceBrand.XIONGMAI, "Xiongmai Net DVR/NVR")
-            ports.contains(8899) -> Pair(DeviceBrand.XIONGMAI, "Xiongmai Device")
-            ports.contains(8000) -> Pair(DeviceBrand.HIKVISION, "Hikvision Device")
-            ports.contains(554) -> Pair(DeviceBrand.ONVIF, "Camera ONVIF")
-            else -> Pair(DeviceBrand.UNKNOWN, "Thiết bị mạng")
+            ports.contains(37777) -> {
+                if (mac.startsWith("38:AF:29", ignoreCase = true) || IMOU_OUIS.any { mac.startsWith(it, ignoreCase = true) }) {
+                    Triple(DeviceBrand.IMOU, "Camera IMOU", "")
+                } else {
+                    Triple(DeviceBrand.DAHUA, "Dahua Device", "")
+                }
+            }
+            ports.contains(34567) -> Triple(DeviceBrand.XIONGMAI, "Xiongmai Net DVR/NVR", "")
+            ports.contains(8899) -> Triple(DeviceBrand.XIONGMAI, "Xiongmai Device", "")
+            // Port 8000 is ONLY Hikvision if MAC is Hikvision or port 554 (RTSP) is open!
+            ports.contains(8000) && (HIKVISION_OUIS.any { mac.startsWith(it, ignoreCase = true) } || ports.contains(554)) ->
+                Triple(DeviceBrand.HIKVISION, "Hikvision Device", "")
+            ports.contains(554) -> Triple(DeviceBrand.ONVIF, "Camera ONVIF", "")
+            else -> Triple(DeviceBrand.UNKNOWN, "Thiết bị mạng", "")
         }
     }
 
-    private fun checkHttpBanner(ip: String, port: Int): Pair<DeviceBrand, String>? {
+    private fun checkHttpBanner(ip: String, port: Int, mac: String = ""): Triple<DeviceBrand, String, String>? {
         try {
             val url = URL("http://$ip:$port/")
             val conn = (url.openConnection() as HttpURLConnection).apply {
@@ -205,59 +244,84 @@ class SubnetIpScanner {
                 instanceFollowRedirects = false
             }
             conn.connect()
-            val server = conn.getHeaderField("Server") ?: ""
+            val server = (conn.getHeaderField("Server") ?: "").lowercase()
             val auth = conn.getHeaderField("WWW-Authenticate") ?: ""
             var title = ""
+            var body = ""
             try {
-                val body = conn.inputStream.bufferedReader().use { it.readText() }
+                val stream = if (conn.responseCode in 200..299) conn.inputStream else conn.errorStream
+                body = stream?.bufferedReader()?.use { it.readText().take(1500) } ?: ""
                 val titleMatch = Regex("<title>([^<]+)</title>", RegexOption.IGNORE_CASE).find(body)
                 title = titleMatch?.groups?.get(1)?.value?.trim() ?: ""
             } catch (_: Exception) {}
 
-            val banner = "$server $auth $title".lowercase()
+            // Explicit Web Server / Virtual Machine filter (e.g. uvicorn, nginx, apache)
+            val isExplicitServer = server.contains("uvicorn") || server.contains("gunicorn") ||
+                    server.contains("nginx") || server.contains("apache") || server.contains("caddy") ||
+                    server.contains("werkzeug") || server.contains("python") || server.contains("openssh")
+            if (isExplicitServer) {
+                return Triple(DeviceBrand.UNKNOWN, if (title.isNotBlank()) title else "Máy chủ Web ($server)", "")
+            }
+
+            // Extract Dahua/IMOU realm serial from auth header
+            var serial = ""
+            if (auth.isNotBlank()) {
+                val realmMatch = Regex("realm=[\"']Login to ([A-Za-z0-9]+)[\"']", RegexOption.IGNORE_CASE).find(auth)
+                if (realmMatch != null) {
+                    serial = realmMatch.groupValues[1].trim()
+                }
+            }
+
+            // Quick Dahua/IMOU magicBox probe if port 80/8080 didn't yield realm
+            if (serial.isBlank() && (port == 80 || port == 8080)) {
+                try {
+                    val mConn = (URL("http://$ip:$port/cgi-bin/magicBox.cgi?action=getSystemInfo").openConnection() as HttpURLConnection).apply {
+                        connectTimeout = 200
+                        readTimeout = 200
+                        requestMethod = "GET"
+                    }
+                    val mAuth = mConn.getHeaderField("WWW-Authenticate") ?: ""
+                    val rMatch = Regex("realm=[\"']Login to ([A-Za-z0-9]+)[\"']", RegexOption.IGNORE_CASE).find(mAuth)
+                    if (rMatch != null) {
+                        serial = rMatch.groupValues[1].trim()
+                    }
+                } catch (_: Exception) {}
+            }
+
+            val isImou = body.contains("lechange", ignoreCase = true) ||
+                    body.contains("imou", ignoreCase = true) ||
+                    title.contains("imou", ignoreCase = true) ||
+                    serial.contains("PAJA", ignoreCase = true) ||
+                    mac.startsWith("38:AF:29", ignoreCase = true) ||
+                    Regex("^[4-9][D|H|L|K]", RegexOption.IGNORE_CASE).containsMatchIn(serial)
+
+            if (isImou) {
+                val modelName = if (serial.isNotBlank()) "Camera IMOU ($serial)" else "Camera IMOU"
+                return Triple(DeviceBrand.IMOU, modelName, serial)
+            }
+
+            if (serial.isNotBlank()) {
+                return Triple(DeviceBrand.DAHUA, "Dahua Device ($serial)", serial)
+            }
+
+            val banner = "$server $auth $title $body".lowercase()
             return when {
                 banner.contains("hikvision") || banner.contains("dvr-webs") || banner.contains("hikvision-webs") ->
-                    Pair(DeviceBrand.HIKVISION, if (title.isNotBlank()) title else "Hikvision Device")
+                    Triple(DeviceBrand.HIKVISION, if (title.isNotBlank()) title else "Hikvision Device", "")
                 banner.contains("dahua") || banner.contains("app-webs") || banner.contains("dhip") ->
-                    Pair(DeviceBrand.DAHUA, if (title.isNotBlank()) title else "Dahua Device")
+                    Triple(DeviceBrand.DAHUA, if (title.isNotBlank()) title else "Dahua Device", "")
                 banner.contains("ezviz") ->
-                    Pair(DeviceBrand.EZVIZ, if (title.isNotBlank()) title else "EZVIZ Device")
-                banner.contains("imou") ->
-                    Pair(DeviceBrand.IMOU, if (title.isNotBlank()) title else "IMOU Device")
+                    Triple(DeviceBrand.EZVIZ, if (title.isNotBlank()) title else "EZVIZ Device", "")
                 banner.contains("kbvision") ->
-                    Pair(DeviceBrand.KBVISION, if (title.isNotBlank()) title else "KBVISION Device")
+                    Triple(DeviceBrand.KBVISION, if (title.isNotBlank()) title else "KBVISION Device", "")
                 banner.contains("uniview") || banner.contains("unv") ->
-                    Pair(DeviceBrand.UNIVIEW, if (title.isNotBlank()) title else "Uniview Device")
+                    Triple(DeviceBrand.UNIVIEW, if (title.isNotBlank()) title else "Uniview Device", "")
                 banner.contains("xiongmai") || banner.contains("netsurveillance") || banner.contains("uc-httpd") ->
-                    Pair(DeviceBrand.XIONGMAI, if (title.isNotBlank()) title else "Xiongmai Device")
+                    Triple(DeviceBrand.XIONGMAI, if (title.isNotBlank()) title else "Xiongmai Device", "")
                 else -> null
             }
         } catch (_: Exception) {
             return null
         }
-    }
-
-    private fun getArpTable(): Map<String, String> {
-        val map = mutableMapOf<String, String>()
-        try {
-            BufferedReader(FileReader("/proc/net/arp")).use { reader ->
-                var line: String?
-                while (reader.readLine().also { line = it } != null) {
-                    val tokens = line!!.split("\\s+".toRegex())
-                    if (tokens.size >= 4) {
-                        val ip = tokens[0]
-                        val mac = tokens[3]
-                        if (mac != "00:00:00:00:00:00" && !mac.contains("00:00:00")) {
-                            map[ip] = mac.uppercase()
-                        }
-                    }
-                }
-            }
-        } catch (_: Exception) {}
-        return map
-    }
-
-    private fun getMacFromArp(ip: String): String {
-        return getArpTable()[ip] ?: ""
     }
 }

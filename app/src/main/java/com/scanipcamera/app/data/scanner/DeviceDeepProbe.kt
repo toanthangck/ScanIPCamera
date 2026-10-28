@@ -153,6 +153,16 @@ object DeviceDeepProbe {
 
                 var serial = ""
                 var model = ""
+
+                // Extract realm serial from WWW-Authenticate on 401 or any code
+                val authHeader = conn.getHeaderField("WWW-Authenticate") ?: ""
+                if (authHeader.isNotBlank()) {
+                    val realmMatch = Regex("realm=[\"']Login to ([A-Za-z0-9]+)[\"']", RegexOption.IGNORE_CASE).find(authHeader)
+                    if (realmMatch != null) {
+                        serial = realmMatch.groupValues[1].trim()
+                    }
+                }
+
                 if (conn.responseCode == 200) {
                     val body = conn.inputStream.bufferedReader().use { it.readText() }
                     for (line in body.lines()) {
@@ -166,29 +176,44 @@ object DeviceDeepProbe {
                 }
 
                 // 2. Get Net Interface (MAC)
-                val netUrl = URL("http://$ip:$port/cgi-bin/netApp.cgi?action=getNetInterface")
-                val netConn = (netUrl.openConnection() as HttpURLConnection).apply {
-                    connectTimeout = TIMEOUT_MS
-                    readTimeout = TIMEOUT_MS
-                    requestMethod = "GET"
-                }
-
                 var mac = ""
-                if (netConn.responseCode == 200) {
-                    val body = netConn.inputStream.bufferedReader().use { it.readText() }
-                    val macRegex = "([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})".toRegex()
-                    mac = macRegex.find(body)?.value?.uppercase()?.replace("-", ":") ?: ""
+                try {
+                    val netUrl = URL("http://$ip:$port/cgi-bin/netApp.cgi?action=getNetInterface")
+                    val netConn = (netUrl.openConnection() as HttpURLConnection).apply {
+                        connectTimeout = TIMEOUT_MS
+                        readTimeout = TIMEOUT_MS
+                        requestMethod = "GET"
+                    }
+                    if (netConn.responseCode == 200) {
+                        val body = netConn.inputStream.bufferedReader().use { it.readText() }
+                        val macRegex = "([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})".toRegex()
+                        mac = macRegex.find(body)?.value?.uppercase()?.replace("-", ":") ?: ""
+                    }
+                } catch (_: Exception) {}
+
+                if (mac.isBlank()) {
+                    mac = SubnetIpScanner.getMacFromArp(ip)
                 }
 
                 if (serial.isNotBlank() || mac.isNotBlank() || model.isNotBlank()) {
-                    val brand = DeviceBrand.fromModelOrVendor("$model $serial")
-                    val (cat, ch) = CameraDevice.detectCategoryAndChannels(model, serial)
+                    var brand = DeviceBrand.fromModelOrVendor("$model $serial $mac")
+                    if (brand == DeviceBrand.UNKNOWN) {
+                        brand = DeviceBrand.fromMacAddress(mac)
+                        if (brand == DeviceBrand.UNKNOWN) brand = DeviceBrand.DAHUA
+                    }
+                    val (cat, ch) = CameraDevice.detectCategoryAndChannels(model, "$brand $serial")
+                    val defaultModel = if (brand == DeviceBrand.IMOU) "Camera IMOU" else "Dahua IPC"
+                    val finalModel = when {
+                        model.isNotBlank() -> model
+                        serial.isNotBlank() -> "$defaultModel ($serial)"
+                        else -> defaultModel
+                    }
                     return CameraDevice(
                         id = if (mac.isNotBlank()) mac else (if (serial.isNotBlank()) serial else ip),
-                        brand = if (brand == DeviceBrand.UNKNOWN) DeviceBrand.DAHUA else brand,
+                        brand = brand,
                         category = cat,
                         channelCount = ch,
-                        model = if (model.isNotBlank()) model else "Dahua Device",
+                        model = finalModel,
                         serialNumber = serial,
                         macAddress = mac,
                         ipv4Address = ip,
