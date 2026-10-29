@@ -9,7 +9,9 @@ import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
@@ -96,6 +98,10 @@ fun DahuaPlaybackDialog(
             recordedDays = days
             isLoadingCalendar = false
         }
+    }
+
+    LaunchedEffect(selectedYear, selectedMonth, selectedChannel) {
+        loadCalendarForMonth(selectedYear, selectedMonth)
     }
 
     fun formatTime(sec: Int): String {
@@ -191,8 +197,7 @@ fun DahuaPlaybackDialog(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(12.dp)
-                    .verticalScroll(rememberScrollState()),
+                    .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 // Header
@@ -289,13 +294,21 @@ fun DahuaPlaybackDialog(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(6.dp))
+                Spacer(modifier = Modifier.height(2.dp))
 
-                // Timeline Seekbar (00:00:00 -> 23:59:59)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                // Scrollable Controls and Calendar (SurfaceView is isolated above)
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    // Timeline Seekbar (00:00:00 -> 23:59:59)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                     Text(
                         text = formatTime(currentSecOfDay),
                         fontSize = 11.sp,
@@ -599,6 +612,7 @@ fun DahuaPlaybackDialog(
         }
     }
 }
+}
 
 @Composable
 private fun MonthRecordCalendar(
@@ -712,39 +726,44 @@ private fun MonthRecordCalendar(
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .padding(horizontal = 1.5.dp, vertical = 2.dp)
+                                    .padding(horizontal = 2.dp, vertical = 2.5.dp)
                                     .clip(RoundedCornerShape(6.dp))
                                     .background(
                                         when {
                                             isSelected -> MaterialTheme.colorScheme.primary
-                                            hasRecord -> Color(0xFF0284C7).copy(alpha = 0.2f)
+                                            hasRecord -> Color(0xFF0284C7).copy(alpha = 0.22f)
                                             else -> Color.Transparent
                                         }
                                     )
+                                    .then(
+                                        if (hasRecord && !isSelected) {
+                                            Modifier.border(1.2.dp, Color(0xFF0284C7).copy(alpha = 0.7f), RoundedCornerShape(6.dp))
+                                        } else Modifier
+                                    )
                                     .clickable { onSelectDay(dayNum) }
-                                    .padding(vertical = 3.dp),
+                                    .padding(vertical = 4.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text(
                                         text = "$dayNum",
-                                        fontSize = 11.sp,
-                                        fontWeight = if (hasRecord || isSelected) FontWeight.ExtraBold else FontWeight.Normal,
+                                        fontSize = if (hasRecord) 12.sp else 11.sp,
+                                        fontWeight = if (hasRecord) FontWeight.Black else if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                         color = when {
                                             isSelected -> Color.White
                                             hasRecord -> Color(0xFF0369A1)
-                                            else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                            else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
                                         }
                                     )
                                     if (hasRecord) {
                                         Box(
                                             modifier = Modifier
-                                                .size(3.5.dp)
+                                                .size(4.dp)
                                                 .clip(CircleShape)
-                                                .background(if (isSelected) Color.White else Color(0xFF059669))
+                                                .background(if (isSelected) Color.White else Color(0xFF16A34A))
                                         )
                                     } else {
-                                        Spacer(modifier = Modifier.height(3.5.dp))
+                                        Spacer(modifier = Modifier.height(4.dp))
                                     }
                                 }
                             }

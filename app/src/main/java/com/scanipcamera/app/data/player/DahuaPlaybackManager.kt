@@ -39,6 +39,12 @@ class DahuaPlaybackManager {
     private var playPort: Int = -1
     private var downloadHandle: Long = 0L
 
+    // Credentials cache for independent search sessions
+    private var currentIp: String = ""
+    private var currentPort: Int = 37777
+    private var currentUsername: String = "admin"
+    private var currentPassword: String = ""
+
     // Retain strong references to native callbacks to prevent GC collection during playback
     private var dataCallback: CB_fDataCallBack? = null
     private var posCallback: CB_fDownLoadPosCallBack? = null
@@ -61,6 +67,10 @@ class DahuaPlaybackManager {
         password: String = ""
     ): Result<Int> = withContext(Dispatchers.IO) {
         logout()
+        currentIp = ip
+        currentPort = port
+        currentUsername = username
+        currentPassword = password
 
         try {
             val stuIn = NET_IN_LOGIN_WITH_HIGHLEVEL_SECURITY().apply {
@@ -362,7 +372,10 @@ class DahuaPlaybackManager {
      */
     suspend fun queryRecordedDaysInMonth(channel: Int, year: Int, month: Int): Set<Int> = withContext(Dispatchers.IO) {
         val recordedDays = mutableSetOf<Int>()
-        if (loginHandle == 0L) return@withContext recordedDays
+        if (loginHandle == 0L) {
+            Log.w(TAG, "Cannot query recorded days: Not logged in")
+            return@withContext recordedDays
+        }
 
         val cal = java.util.Calendar.getInstance().apply {
             set(java.util.Calendar.YEAR, year)
@@ -381,12 +394,44 @@ class DahuaPlaybackManager {
             setTime(year.toLong(), month.toLong(), maxDay.toLong(), 23L, 59L, 59L)
         }
 
+        // Dedicated search handle to avoid multiplexing collisions on active playback stream
+        var searchHandle = 0L
+        if (currentIp.isNotBlank()) {
+            try {
+                val stuIn = NET_IN_LOGIN_WITH_HIGHLEVEL_SECURITY().apply {
+                    val ipBytes = currentIp.trim().toByteArray(Charsets.UTF_8)
+                    System.arraycopy(ipBytes, 0, szIP, 0, minOf(ipBytes.size, szIP.size))
+                    nPort = currentPort
+                    val userBytes = currentUsername.trim().toByteArray(Charsets.UTF_8)
+                    System.arraycopy(userBytes, 0, szUserName, 0, minOf(userBytes.size, szUserName.size))
+                    val pwdBytes = currentPassword.trim().toByteArray(Charsets.UTF_8)
+                    System.arraycopy(pwdBytes, 0, szPassword, 0, minOf(pwdBytes.size, szPassword.size))
+                    emSpecCap = EM_LOGIN_SPAC_CAP_TYPE.EM_LOGIN_SPEC_CAP_TCP
+                }
+                val stuOut = NET_OUT_LOGIN_WITH_HIGHLEVEL_SECURITY()
+                searchHandle = INetSDK.LoginWithHighLevelSecurity(stuIn, stuOut)
+                if (searchHandle == 0L) {
+                    val devInfo = NET_DEVICEINFO_Ex()
+                    searchHandle = INetSDK.LoginEx2(currentIp.trim(), currentPort, currentUsername.trim(), currentPassword.trim(), 0, null, devInfo, 0)
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "Dedicated search handle login failed, using primary handle: ${e.message}")
+            }
+        }
+
+        val activeHandle = if (searchHandle != 0L) searchHandle else loginHandle
+        if (activeHandle == 0L) {
+            Log.w(TAG, "No valid login handle for record search")
+            return@withContext recordedDays
+        }
+
         try {
-            val findHandle = INetSDK.FindFile(loginHandle, channel, EM_QUERY_RECORD_TYPE.EM_RECORD_TYPE_ALL, null, startTime, endTime, false, 3000)
+            Log.d(TAG, "Querying record files for channel $channel, month $month/$year (1..$maxDay)")
+            val findHandle = INetSDK.FindFile(activeHandle, channel, EM_QUERY_RECORD_TYPE.EM_RECORD_TYPE_ALL, null, startTime, endTime, true, 4000)
             if (findHandle != 0L) {
                 val fileInfo = NET_RECORDFILE_INFO()
                 var count = 0
-                while (count < 1500) {
+                while (count < 2000) {
                     val ret = INetSDK.FindNextFile(findHandle, fileInfo)
                     if (ret > 0) {
                         val d = fileInfo.starttime?.dwDay?.toInt() ?: 0
@@ -399,12 +444,48 @@ class DahuaPlaybackManager {
                     }
                 }
                 INetSDK.FindClose(findHandle)
+                Log.d(TAG, "FindFile found $count files across ${recordedDays.size} days")
+            } else {
+                Log.w(TAG, "FindFile returned 0, error=${INetSDK.GetLastError()}")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Error querying recorded days", e)
+            Log.e(TAG, "Error in FindFile", e)
         }
 
-        Log.d(TAG, "Found ${recordedDays.size} recorded days in month $month/$year for channel $channel: $recordedDays")
+        // Secondary Strategy: If FindFile returned 0 (e.g. Imou IPC firmware requires QueryRecordTime per day),
+        // query day-by-day using QueryRecordTime
+        if (recordedDays.isEmpty()) {
+            try {
+                Log.d(TAG, "Trying QueryRecordTime fallback day by day...")
+                val bRet = com.company.NetSDK.BOOL_RET()
+                val now = java.util.Calendar.getInstance()
+                val isCurrentMonth = (year == now.get(java.util.Calendar.YEAR) && month == (now.get(java.util.Calendar.MONTH) + 1))
+                val limitDay = if (isCurrentMonth) now.get(java.util.Calendar.DAY_OF_MONTH) else maxDay
+
+                for (d in 1..limitDay) {
+                    val dStart = NET_TIME().apply { setTime(year.toLong(), month.toLong(), d.toLong(), 0L, 0L, 0L) }
+                    val dEnd = NET_TIME().apply { setTime(year.toLong(), month.toLong(), d.toLong(), 23L, 59L, 59L) }
+                    bRet.value = false
+                    val ok = INetSDK.QueryRecordTime(activeHandle, channel, 0, dStart, dEnd, null, bRet, 800)
+                    if (ok && bRet.value) {
+                        recordedDays.add(d)
+                    }
+                }
+                Log.d(TAG, "QueryRecordTime fallback found ${recordedDays.size} days")
+            } catch (t: Throwable) {
+                Log.w(TAG, "QueryRecordTime fallback failed: ${t.message}")
+            }
+        }
+
+        if (searchHandle != 0L) {
+            try {
+                INetSDK.Logout(searchHandle)
+            } catch (t: Throwable) {
+                Log.w(TAG, "Error logging out search handle: ${t.message}")
+            }
+        }
+
+        Log.i(TAG, "Final recorded days in month $month/$year for channel $channel: $recordedDays")
         recordedDays
     }
 }
