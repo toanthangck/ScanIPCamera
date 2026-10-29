@@ -174,6 +174,7 @@ class DahuaLivePlayerManager {
                 IPlaySDK.PLAYStopSoundShare(playPort)
                 IPlaySDK.PLAYCloseStream(playPort)
                 IPlaySDK.PLAYRefreshPlay(playPort)
+                IPlaySDK.UinitSurface(playPort)
             } catch (t: Throwable) {
                 Log.w(TAG, "Error closing play stream: ${t.message}")
             }

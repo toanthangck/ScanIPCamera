@@ -10,9 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -23,6 +21,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.scanipcamera.app.data.export.DeviceExportHelper
@@ -40,6 +39,7 @@ fun RtspDialog(
     val context = LocalContext.current
     var username by remember { mutableStateOf(defaultUser) }
     var password by remember { mutableStateOf(defaultPassword) }
+    var passwordVisible by remember { mutableStateOf(false) }
 
     val streams = remember(username, password, device) {
         RtspHelper.generateStreams(device, username, password)
@@ -89,8 +89,17 @@ fun RtspDialog(
                         onValueChange = { password = it },
                         label = { Text("Mật khẩu") },
                         singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
+                        visualTransformation = if (!passwordVisible) PasswordVisualTransformation() else VisualTransformation.None,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        trailingIcon = {
+                            IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                                Icon(
+                                    imageVector = if (passwordVisible) androidx.compose.material.icons.Icons.Default.VisibilityOff else androidx.compose.material.icons.Icons.Default.Visibility,
+                                    contentDescription = if (passwordVisible) "Ẩn mật khẩu" else "Hiện mật khẩu",
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                        },
                         modifier = Modifier.weight(1f)
                     )
                 }

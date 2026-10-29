@@ -39,6 +39,11 @@ class DahuaPlaybackManager {
     private var playPort: Int = -1
     private var downloadHandle: Long = 0L
 
+    // Retain strong references to native callbacks to prevent GC collection during playback
+    private var dataCallback: CB_fDataCallBack? = null
+    private var posCallback: CB_fDownLoadPosCallBack? = null
+    private var downloadCallback: CB_fTimeDownLoadPosCallBack? = null
+
     var channelCount: Int = 1
         private set
 
@@ -144,14 +149,18 @@ class DahuaPlaybackManager {
             INetSDK.SetDeviceMode(loginHandle, EM_USEDEV_MODE.SDK_RECORD_STREAM_TYPE, 0)
             INetSDK.SetDeviceMode(loginHandle, EM_USEDEV_MODE.SDK_RECORD_TYPE, NET_RECORD_TYPE.NET_RECORD_TYPE_ALL)
 
-            val currentPort = playPort
-            val dataCallback = CB_fDataCallBack { _, dwDataType, buffer, dwBufSize ->
-                if (dwDataType == 0 && buffer != null && currentPort >= 0) {
-                    IPlaySDK.PLAYInputData(currentPort, buffer, dwBufSize)
+            val targetPort = playPort
+            this.dataCallback = CB_fDataCallBack { _, dwDataType, buffer, dwBufSize ->
+                if (playHandle != 0L && playPort >= 0 && dwDataType == 0 && buffer != null) {
+                    try {
+                        IPlaySDK.PLAYInputData(targetPort, buffer, dwBufSize)
+                    } catch (t: Throwable) {
+                        0
+                    }
                 } else 1
             }
 
-            val posCallback = CB_fDownLoadPosCallBack { _, total, current ->
+            this.posCallback = CB_fDownLoadPosCallBack { _, total, current ->
                 onPosUpdate?.invoke(total, current)
             }
 
@@ -202,18 +211,22 @@ class DahuaPlaybackManager {
     }
 
     fun getOsdTime(): NET_TIME? {
-        if (playPort < 0) return null
-        val buffer = ByteArray(24)
-        return if (IPlaySDK.PLAYQueryInfo(playPort, Constants.PLAY_CMD_GetTime, buffer, buffer.size, 0) != 0) {
-            NET_TIME().apply {
-                dwYear = ((buffer[3].toLong() and 0xffL) shl 24) or ((buffer[2].toLong() and 0xffL) shl 16) or ((buffer[1].toLong() and 0xffL) shl 8) or (buffer[0].toLong() and 0xffL)
-                dwMonth = ((buffer[7].toLong() and 0xffL) shl 24) or ((buffer[6].toLong() and 0xffL) shl 16) or ((buffer[5].toLong() and 0xffL) shl 8) or (buffer[4].toLong() and 0xffL)
-                dwDay = ((buffer[11].toLong() and 0xffL) shl 24) or ((buffer[10].toLong() and 0xffL) shl 16) or ((buffer[9].toLong() and 0xffL) shl 8) or (buffer[8].toLong() and 0xffL)
-                dwHour = ((buffer[15].toLong() and 0xffL) shl 24) or ((buffer[14].toLong() and 0xffL) shl 16) or ((buffer[13].toLong() and 0xffL) shl 8) or (buffer[12].toLong() and 0xffL)
-                dwMinute = ((buffer[19].toLong() and 0xffL) shl 24) or ((buffer[18].toLong() and 0xffL) shl 16) or ((buffer[17].toLong() and 0xffL) shl 8) or (buffer[16].toLong() and 0xffL)
-                dwSecond = ((buffer[23].toLong() and 0xffL) shl 24) or ((buffer[22].toLong() and 0xffL) shl 16) or ((buffer[21].toLong() and 0xffL) shl 8) or (buffer[20].toLong() and 0xffL)
-            }
-        } else null
+        if (playPort < 0 || playHandle == 0L) return null
+        return try {
+            val buffer = ByteArray(24)
+            if (IPlaySDK.PLAYQueryInfo(playPort, Constants.PLAY_CMD_GetTime, buffer, buffer.size, 0) != 0) {
+                NET_TIME().apply {
+                    dwYear = ((buffer[3].toLong() and 0xffL) shl 24) or ((buffer[2].toLong() and 0xffL) shl 16) or ((buffer[1].toLong() and 0xffL) shl 8) or (buffer[0].toLong() and 0xffL)
+                    dwMonth = ((buffer[7].toLong() and 0xffL) shl 24) or ((buffer[6].toLong() and 0xffL) shl 16) or ((buffer[5].toLong() and 0xffL) shl 8) or (buffer[4].toLong() and 0xffL)
+                    dwDay = ((buffer[11].toLong() and 0xffL) shl 24) or ((buffer[10].toLong() and 0xffL) shl 16) or ((buffer[9].toLong() and 0xffL) shl 8) or (buffer[8].toLong() and 0xffL)
+                    dwHour = ((buffer[15].toLong() and 0xffL) shl 24) or ((buffer[14].toLong() and 0xffL) shl 16) or ((buffer[13].toLong() and 0xffL) shl 8) or (buffer[12].toLong() and 0xffL)
+                    dwMinute = ((buffer[19].toLong() and 0xffL) shl 24) or ((buffer[18].toLong() and 0xffL) shl 16) or ((buffer[17].toLong() and 0xffL) shl 8) or (buffer[16].toLong() and 0xffL)
+                    dwSecond = ((buffer[23].toLong() and 0xffL) shl 24) or ((buffer[22].toLong() and 0xffL) shl 16) or ((buffer[21].toLong() and 0xffL) shl 8) or (buffer[20].toLong() and 0xffL)
+                }
+            } else null
+        } catch (t: Throwable) {
+            null
+        }
     }
 
     fun captureSnapshot(outputFile: File): Boolean {
@@ -248,7 +261,7 @@ class DahuaPlaybackManager {
 
         INetSDK.SetDeviceMode(loginHandle, EM_USEDEV_MODE.SDK_RECORD_STREAM_TYPE, 0)
 
-        val callback = CB_fTimeDownLoadPosCallBack { _, dwTotalSize, dwDownLoadSize, _, _ ->
+        this.downloadCallback = CB_fTimeDownLoadPosCallBack { _, dwTotalSize, dwDownLoadSize, _, _ ->
             if (dwDownLoadSize == -1) {
                 // Completed
                 stopDownload()
@@ -272,7 +285,7 @@ class DahuaPlaybackManager {
             startTime,
             endTime,
             outputFile.absolutePath,
-            callback,
+            downloadCallback,
             null,
             null
         )
@@ -296,6 +309,7 @@ class DahuaPlaybackManager {
             }
             downloadHandle = 0L
         }
+        downloadCallback = null
     }
 
     fun stopPlayback() {
@@ -313,10 +327,13 @@ class DahuaPlaybackManager {
                 IPlaySDK.PLAYStopSoundShare(playPort)
                 IPlaySDK.PLAYCloseStream(playPort)
                 IPlaySDK.PLAYRefreshPlay(playPort)
+                IPlaySDK.UinitSurface(playPort)
             } catch (t: Throwable) {
                 Log.w(TAG, "Error closing stream: ${t.message}")
             }
         }
+        dataCallback = null
+        posCallback = null
     }
 
     fun logout() {
@@ -331,8 +348,63 @@ class DahuaPlaybackManager {
             loginHandle = 0L
         }
         if (playPort >= 0) {
-            IPlaySDK.PLAYReleasePort(playPort)
+            try {
+                IPlaySDK.PLAYReleasePort(playPort)
+            } catch (t: Throwable) {
+                Log.w(TAG, "Error releasing port: ${t.message}")
+            }
             playPort = -1
         }
+    }
+
+    /**
+     * Query which days of the specified month have recorded video footage.
+     */
+    suspend fun queryRecordedDaysInMonth(channel: Int, year: Int, month: Int): Set<Int> = withContext(Dispatchers.IO) {
+        val recordedDays = mutableSetOf<Int>()
+        if (loginHandle == 0L) return@withContext recordedDays
+
+        val cal = java.util.Calendar.getInstance().apply {
+            set(java.util.Calendar.YEAR, year)
+            set(java.util.Calendar.MONTH, month - 1)
+            set(java.util.Calendar.DAY_OF_MONTH, 1)
+            set(java.util.Calendar.HOUR_OF_DAY, 0)
+            set(java.util.Calendar.MINUTE, 0)
+            set(java.util.Calendar.SECOND, 0)
+        }
+        val maxDay = cal.getActualMaximum(java.util.Calendar.DAY_OF_MONTH)
+
+        val startTime = NET_TIME().apply {
+            setTime(year.toLong(), month.toLong(), 1L, 0L, 0L, 0L)
+        }
+        val endTime = NET_TIME().apply {
+            setTime(year.toLong(), month.toLong(), maxDay.toLong(), 23L, 59L, 59L)
+        }
+
+        try {
+            val findHandle = INetSDK.FindFile(loginHandle, channel, EM_QUERY_RECORD_TYPE.EM_RECORD_TYPE_ALL, null, startTime, endTime, false, 3000)
+            if (findHandle != 0L) {
+                val fileInfo = NET_RECORDFILE_INFO()
+                var count = 0
+                while (count < 1500) {
+                    val ret = INetSDK.FindNextFile(findHandle, fileInfo)
+                    if (ret > 0) {
+                        val d = fileInfo.starttime?.dwDay?.toInt() ?: 0
+                        if (d in 1..maxDay) {
+                            recordedDays.add(d)
+                        }
+                        count++
+                    } else {
+                        break
+                    }
+                }
+                INetSDK.FindClose(findHandle)
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "Error querying recorded days", e)
+        }
+
+        Log.d(TAG, "Found ${recordedDays.size} recorded days in month $month/$year for channel $channel: $recordedDays")
+        recordedDays
     }
 }

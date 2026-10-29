@@ -166,7 +166,7 @@ fun WifiCameraInitDialog(
                             label = { Text("Tên Wi-Fi (SSID)", fontSize = 11.sp) },
                             singleLine = true,
                             leadingIcon = { Icon(Icons.Default.Wifi, contentDescription = null, modifier = Modifier.size(16.dp)) },
-                            modifier = Modifier.fillMaxWidth().height(50.dp)
+                            modifier = Modifier.fillMaxWidth()
                         )
                         OutlinedTextField(
                             value = wifiPassword,
@@ -184,7 +184,7 @@ fun WifiCameraInitDialog(
                                 }
                             },
                             visualTransformation = if (!passwordVisible) PasswordVisualTransformation() else VisualTransformation.None,
-                            modifier = Modifier.fillMaxWidth().height(50.dp)
+                            modifier = Modifier.fillMaxWidth()
                         )
                     }
                 }

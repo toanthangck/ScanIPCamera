@@ -8,11 +8,15 @@ import android.os.Environment
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -24,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -63,6 +68,11 @@ fun DahuaPlaybackDialog(
     var selectedMonth by remember { mutableIntStateOf(Calendar.getInstance().get(Calendar.MONTH) + 1) }
     var selectedDay by remember { mutableIntStateOf(Calendar.getInstance().get(Calendar.DAY_OF_MONTH)) }
 
+    // Recorded days calendar state
+    var recordedDays by remember { mutableStateOf<Set<Int>>(emptySet()) }
+    var isLoadingCalendar by remember { mutableStateOf(false) }
+    var showCalendar by remember { mutableStateOf(true) }
+
     // Current seek time in seconds of day (0..86399)
     var currentSecOfDay by remember { mutableIntStateOf(Calendar.getInstance().get(Calendar.HOUR_OF_DAY) * 3600 + Calendar.getInstance().get(Calendar.MINUTE) * 60) }
     var isDraggingSlider by remember { mutableStateOf(false) }
@@ -78,6 +88,15 @@ fun DahuaPlaybackDialog(
     var isDownloading by remember { mutableStateOf(false) }
     var downloadProgress by remember { mutableIntStateOf(0) }
     var downloadStatusText by remember { mutableStateOf<String?>(null) }
+
+    fun loadCalendarForMonth(year: Int, month: Int) {
+        coroutineScope.launch {
+            isLoadingCalendar = true
+            val days = playbackManager.queryRecordedDaysInMonth(selectedChannel, year, month)
+            recordedDays = days
+            isLoadingCalendar = false
+        }
+    }
 
     fun formatTime(sec: Int): String {
         val s = sec.coerceIn(0, 86399)
@@ -113,6 +132,9 @@ fun DahuaPlaybackDialog(
             if (loginRes.isSuccess) {
                 totalChannels = maxOf(loginRes.getOrDefault(1), totalChannels)
 
+                // Query recorded days for this month
+                loadCalendarForMonth(selectedYear, selectedMonth)
+
                 val startH = currentSecOfDay / 3600
                 val startM = (currentSecOfDay % 3600) / 60
                 val startS = currentSecOfDay % 60
@@ -124,7 +146,9 @@ fun DahuaPlaybackDialog(
                 isConnecting = false
                 isPlaying = ok
                 if (!ok) {
-                    errorMessage = "Không tìm thấy dữ liệu ghi hình kênh ${selectedChannel + 1} tại thời điểm này"
+                    errorMessage = "Không tìm thấy dữ liệu ghi hình ngày %02d/%02d/%04d (CH %d)".format(
+                        selectedDay, selectedMonth, selectedYear, selectedChannel + 1
+                    )
                 }
             } else {
                 isConnecting = false
@@ -159,15 +183,17 @@ fun DahuaPlaybackDialog(
         Surface(
             modifier = Modifier
                 .fillMaxWidth(0.96f)
-                .wrapContentHeight(),
+                .fillMaxHeight(0.94f),
             shape = RoundedCornerShape(12.dp),
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 6.dp
         ) {
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .fillMaxSize()
                     .padding(12.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
                 // Header
                 Row(
@@ -484,6 +510,247 @@ fun DahuaPlaybackDialog(
                                 label = { Text("CH ${ch + 1}", fontSize = 10.5.sp) },
                                 modifier = Modifier.height(28.dp)
                             )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+
+                // 📅 Monthly Record Calendar Section
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        .clickable { showCalendar = !showCalendar }
+                        .padding(horizontal = 10.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.CalendarMonth,
+                            contentDescription = null,
+                            tint = Color(0xFF0284C7),
+                            modifier = Modifier.size(17.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "Lịch ghi hình tháng %02d/%04d (%s)".format(
+                                selectedMonth, selectedYear,
+                                if (recordedDays.isNotEmpty()) "${recordedDays.size} ngày có video" else "Đang quét..."
+                            ),
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        if (isLoadingCalendar) {
+                            CircularProgressIndicator(modifier = Modifier.size(13.dp), strokeWidth = 1.5.dp)
+                            Spacer(modifier = Modifier.width(6.dp))
+                        }
+                        Icon(
+                            imageVector = if (showCalendar) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                AnimatedVisibility(visible = showCalendar) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        MonthRecordCalendar(
+                            year = selectedYear,
+                            month = selectedMonth,
+                            selectedDay = selectedDay,
+                            recordedDays = recordedDays,
+                            isLoading = isLoadingCalendar,
+                            onPreviousMonth = {
+                                if (selectedMonth == 1) {
+                                    selectedMonth = 12
+                                    selectedYear -= 1
+                                } else {
+                                    selectedMonth -= 1
+                                }
+                                loadCalendarForMonth(selectedYear, selectedMonth)
+                            },
+                            onNextMonth = {
+                                if (selectedMonth == 12) {
+                                    selectedMonth = 1
+                                    selectedYear += 1
+                                } else {
+                                    selectedMonth += 1
+                                }
+                                loadCalendarForMonth(selectedYear, selectedMonth)
+                            },
+                            onSelectDay = { day ->
+                                selectedDay = day
+                                startPlaybackFromCurrentTime()
+                            }
+                        )
+                        Text(
+                            text = "💡 Ngày được tô đậm và có chấm xanh là ngày có file ghi hình trên thiết bị.",
+                            fontSize = 9.5.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(start = 2.dp)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MonthRecordCalendar(
+    year: Int,
+    month: Int,
+    selectedDay: Int,
+    recordedDays: Set<Int>,
+    isLoading: Boolean,
+    onPreviousMonth: () -> Unit,
+    onNextMonth: () -> Unit,
+    onSelectDay: (day: Int) -> Unit
+) {
+    val cal = remember(year, month) {
+        Calendar.getInstance().apply {
+            set(Calendar.YEAR, year)
+            set(Calendar.MONTH, month - 1)
+            set(Calendar.DAY_OF_MONTH, 1)
+        }
+    }
+    val daysInMonth = cal.getActualMaximum(Calendar.DAY_OF_MONTH)
+    // 0 = Monday, ..., 6 = Sunday
+    val firstDayOfWeek = (cal.get(Calendar.DAY_OF_WEEK) + 5) % 7
+    val totalSlots = firstDayOfWeek + daysInMonth
+    val totalRows = (totalSlots + 6) / 7
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(8.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(8.dp)
+        ) {
+            // Month Header & Navigation
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(
+                    onClick = onPreviousMonth,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(Icons.Default.ChevronLeft, contentDescription = "Tháng trước", modifier = Modifier.size(20.dp))
+                }
+
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "Tháng %02d / %04d".format(month, year),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.5.sp
+                    )
+                    if (isLoading) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        CircularProgressIndicator(modifier = Modifier.size(11.dp), strokeWidth = 1.5.dp)
+                    } else if (recordedDays.isNotEmpty()) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = "(${recordedDays.size} ngày có ghi)",
+                            fontSize = 10.sp,
+                            color = Color(0xFF059669),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+
+                IconButton(
+                    onClick = onNextMonth,
+                    modifier = Modifier.size(28.dp)
+                ) {
+                    Icon(Icons.Default.ChevronRight, contentDescription = "Tháng sau", modifier = Modifier.size(20.dp))
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Weekday Headers (T2 -> CN)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceAround
+            ) {
+                listOf("T2", "T3", "T4", "T5", "T6", "T7", "CN").forEach { dayLabel ->
+                    Text(
+                        text = dayLabel,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(3.dp))
+
+            // Calendar Grid
+            for (row in 0 until totalRows) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceAround
+                ) {
+                    for (col in 0 until 7) {
+                        val slotIndex = row * 7 + col
+                        val dayNum = slotIndex - firstDayOfWeek + 1
+                        if (dayNum in 1..daysInMonth) {
+                            val hasRecord = recordedDays.contains(dayNum)
+                            val isSelected = (dayNum == selectedDay)
+
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(horizontal = 1.5.dp, vertical = 2.dp)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(
+                                        when {
+                                            isSelected -> MaterialTheme.colorScheme.primary
+                                            hasRecord -> Color(0xFF0284C7).copy(alpha = 0.2f)
+                                            else -> Color.Transparent
+                                        }
+                                    )
+                                    .clickable { onSelectDay(dayNum) }
+                                    .padding(vertical = 3.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text(
+                                        text = "$dayNum",
+                                        fontSize = 11.sp,
+                                        fontWeight = if (hasRecord || isSelected) FontWeight.ExtraBold else FontWeight.Normal,
+                                        color = when {
+                                            isSelected -> Color.White
+                                            hasRecord -> Color(0xFF0369A1)
+                                            else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f)
+                                        }
+                                    )
+                                    if (hasRecord) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(3.5.dp)
+                                                .clip(CircleShape)
+                                                .background(if (isSelected) Color.White else Color(0xFF059669))
+                                        )
+                                    } else {
+                                        Spacer(modifier = Modifier.height(3.5.dp))
+                                    }
+                                }
+                            }
+                        } else {
+                            // Blank cell
+                            Spacer(modifier = Modifier.weight(1f))
                         }
                     }
                 }

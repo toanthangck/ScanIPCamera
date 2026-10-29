@@ -136,7 +136,7 @@ fun ActivationDialog(
                     },
                     visualTransformation = if (!passwordVisible) PasswordVisualTransformation() else VisualTransformation.None,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    modifier = Modifier.fillMaxWidth().height(50.dp)
+                    modifier = Modifier.fillMaxWidth()
                 )
 
                 OutlinedTextField(
@@ -150,7 +150,7 @@ fun ActivationDialog(
                     leadingIcon = { Icon(Icons.Default.LockReset, contentDescription = null, modifier = Modifier.size(16.dp)) },
                     visualTransformation = if (!passwordVisible) PasswordVisualTransformation() else VisualTransformation.None,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    modifier = Modifier.fillMaxWidth().height(50.dp)
+                    modifier = Modifier.fillMaxWidth()
                 )
 
                 // 2. Email Recovery Section
@@ -163,7 +163,7 @@ fun ActivationDialog(
                     singleLine = true,
                     leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, modifier = Modifier.size(16.dp)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                    modifier = Modifier.fillMaxWidth().height(50.dp)
+                    modifier = Modifier.fillMaxWidth()
                 )
 
                 // 3. Network IP Re-assignment Section
@@ -198,33 +198,45 @@ fun ActivationDialog(
                         }
 
                         if (shouldChangeIp) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth().padding(start = 12.dp)
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(start = 8.dp, top = 6.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                RadioButton(
-                                    selected = !isDhcp,
-                                    onClick = { isDhcp = false }
-                                )
-                                Text("IP tĩnh:", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                                Spacer(modifier = Modifier.width(6.dp))
-                                OutlinedTextField(
-                                    value = newIp,
-                                    onValueChange = { newIp = it },
-                                    enabled = !isDhcp,
-                                    singleLine = true,
-                                    modifier = Modifier.weight(1f).height(46.dp)
-                                )
-                            }
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier.fillMaxWidth().padding(start = 12.dp, top = 4.dp)
-                            ) {
-                                RadioButton(
-                                    selected = isDhcp,
-                                    onClick = { isDhcp = true }
-                                )
-                                Text("Tự động nhận IP từ Router (DHCP)", fontSize = 11.sp)
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    RadioButton(
+                                        selected = !isDhcp,
+                                        onClick = { isDhcp = false }
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Đặt địa chỉ IP tĩnh mới:", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                                }
+                                if (!isDhcp) {
+                                    OutlinedTextField(
+                                        value = newIp,
+                                        onValueChange = { newIp = it },
+                                        label = { Text("Địa chỉ IP mới") },
+                                        singleLine = true,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(start = 32.dp, end = 4.dp)
+                                    )
+                                }
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    RadioButton(
+                                        selected = isDhcp,
+                                        onClick = { isDhcp = true }
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Tự động nhận IP từ Router (DHCP)", fontSize = 11.sp)
+                                }
                             }
                         }
                     }

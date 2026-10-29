@@ -148,7 +148,7 @@ fun BatchActivationDialog(
                     },
                     visualTransformation = if (!passwordVisible) PasswordVisualTransformation() else VisualTransformation.None,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                    modifier = Modifier.fillMaxWidth().height(50.dp)
+                    modifier = Modifier.fillMaxWidth()
                 )
 
                 OutlinedTextField(
@@ -159,7 +159,7 @@ fun BatchActivationDialog(
                     singleLine = true,
                     leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, modifier = Modifier.size(16.dp)) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                    modifier = Modifier.fillMaxWidth().height(50.dp)
+                    modifier = Modifier.fillMaxWidth()
                 )
 
                 // Sequential IP Assignment
@@ -170,46 +170,54 @@ fun BatchActivationDialog(
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f))
                 ) {
                     Column(modifier = Modifier.padding(10.dp)) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth()
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            RadioButton(
-                                selected = !isDhcp,
-                                onClick = { isDhcp = false }
-                            )
-                            Text("Gán IP tuần tự tăng dần từ:", fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
-                            Spacer(modifier = Modifier.width(6.dp))
-                            OutlinedTextField(
-                                value = startIp,
-                                onValueChange = { startIp = it },
-                                enabled = !isDhcp,
-                                singleLine = true,
-                                modifier = Modifier.weight(1f).height(46.dp)
-                            )
-                        }
-                        if (!isDhcp) {
-                            val prefix = startIp.substringBeforeLast(".", "192.168.1.") + "."
-                            val startNum = startIp.substringAfterLast(".", "201").toIntOrNull() ?: 201
-                            val endNum = startNum + (selectedIds.size - 1).coerceAtLeast(0)
-                            Text(
-                                text = "➔ Các camera sẽ tự nhận IP từ: $prefix$startNum đến $prefix$endNum",
-                                fontSize = 10.sp,
-                                fontFamily = FontFamily.Monospace,
-                                color = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(start = 12.dp, top = 2.dp)
-                            )
-                        }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                RadioButton(
+                                    selected = !isDhcp,
+                                    onClick = { isDhcp = false }
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Gán IP tĩnh tuần tự tăng dần:", fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
+                            }
+                            if (!isDhcp) {
+                                OutlinedTextField(
+                                    value = startIp,
+                                    onValueChange = { startIp = it },
+                                    label = { Text("Địa chỉ IP bắt đầu") },
+                                    singleLine = true,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(start = 32.dp, end = 4.dp)
+                                )
+                                val prefix = startIp.substringBeforeLast(".", "192.168.1.") + "."
+                                val startNum = startIp.substringAfterLast(".", "201").toIntOrNull() ?: 201
+                                val endNum = startNum + (selectedIds.size - 1).coerceAtLeast(0)
+                                Text(
+                                    text = "➔ Tự động gán: $prefix$startNum đến $prefix$endNum",
+                                    fontSize = 10.sp,
+                                    fontFamily = FontFamily.Monospace,
+                                    color = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(start = 32.dp, top = 2.dp)
+                                )
+                            }
 
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
-                        ) {
-                            RadioButton(
-                                selected = isDhcp,
-                                onClick = { isDhcp = true }
-                            )
-                            Text("Bật DHCP cho tất cả (Router tự cấp IP)", fontSize = 11.sp)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                RadioButton(
+                                    selected = isDhcp,
+                                    onClick = { isDhcp = true }
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Bật DHCP cho tất cả (Router tự cấp IP)", fontSize = 11.sp)
+                            }
                         }
                     }
                 }

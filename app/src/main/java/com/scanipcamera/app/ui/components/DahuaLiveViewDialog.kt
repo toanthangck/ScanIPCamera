@@ -29,6 +29,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -61,6 +62,7 @@ fun DahuaLiveViewDialog(
 
     var username by remember { mutableStateOf(defaultUser) }
     var password by remember { mutableStateOf(defaultPassword) }
+    var passwordVisible by remember { mutableStateOf(false) }
 
     var totalChannels by remember { mutableIntStateOf(if (device.channelCount > 0) device.channelCount else 1) }
     var selectedChannel by remember { mutableIntStateOf(0) } // 0-indexed
@@ -158,7 +160,10 @@ fun DahuaLiveViewDialog(
             defaultUser = username,
             defaultPassword = password,
             initialChannel = selectedChannel,
-            onDismiss = { showPlaybackDialog = false }
+            onDismiss = {
+                showPlaybackDialog = false
+                connectAndPlay(selectedChannel, isSubStream)
+            }
         )
     }
 
@@ -308,7 +313,10 @@ fun DahuaLiveViewDialog(
 
                     // 2. Playback Button
                     FilledTonalButton(
-                        onClick = { showPlaybackDialog = true },
+                        onClick = {
+                            player.stopPlay()
+                            showPlaybackDialog = true
+                        },
                         contentPadding = PaddingValues(horizontal = 8.dp),
                         modifier = Modifier.height(32.dp),
                         colors = ButtonDefaults.filledTonalButtonColors(
@@ -554,9 +562,21 @@ fun DahuaLiveViewDialog(
                         onValueChange = { password = it },
                         label = { Text("Mật khẩu", fontSize = 10.sp) },
                         singleLine = true,
-                        visualTransformation = PasswordVisualTransformation(),
+                        visualTransformation = if (!passwordVisible) PasswordVisualTransformation() else VisualTransformation.None,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                        modifier = Modifier.weight(0.42f),
+                        trailingIcon = {
+                            IconButton(
+                                onClick = { passwordVisible = !passwordVisible },
+                                modifier = Modifier.size(24.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (passwordVisible) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                    contentDescription = if (passwordVisible) "Ẩn mật khẩu" else "Hiện mật khẩu",
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
+                        },
+                        modifier = Modifier.weight(0.44f),
                         textStyle = LocalTextStyle.current.copy(fontSize = 11.5.sp)
                     )
                     Button(
