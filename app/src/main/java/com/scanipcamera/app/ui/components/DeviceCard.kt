@@ -254,19 +254,26 @@ fun DeviceCard(
                     Spacer(modifier = Modifier.width(4.dp))
                 }
 
-                // Unactivated Device Warning Badge
+                // Unactivated Device Warning Badge (Click to Activate)
                 if (!device.isActivated) {
                     Surface(
-                        color = StatusInactive.copy(alpha = 0.15f),
+                        onClick = onActivateClick,
+                        color = Color(0xFFD97706),
                         shape = RoundedCornerShape(4.dp)
                     ) {
-                        Text(
-                            text = "Chưa active",
-                            color = StatusInactive,
-                            fontSize = 8.5.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.5.dp)
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.5.dp)
+                        ) {
+                            Icon(Icons.Default.LockOpen, contentDescription = null, tint = Color.White, modifier = Modifier.size(10.dp))
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = "KÍCH HOẠT",
+                                color = Color.White,
+                                fontSize = 8.5.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
                     }
                 }
             }

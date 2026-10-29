@@ -63,6 +63,8 @@ fun ScannerScreen(
     val editingProject by viewModel.editingProject.collectAsState()
     val timeSyncDevice by viewModel.timeSyncDevice.collectAsState()
     val showDefaultCredentialsDialog by viewModel.showDefaultCredentialsDialog.collectAsState()
+    val showWifiCameraInitDialog by viewModel.showWifiCameraInitDialog.collectAsState()
+    val showBatchActivationDialog by viewModel.showBatchActivationDialog.collectAsState()
 
     var defaultUser by remember(googleUser.defaultUsername) { mutableStateOf(googleUser.defaultUsername) }
     var defaultPassword by remember(googleUser.defaultCameraPassword) { mutableStateOf(googleUser.defaultCameraPassword) }
@@ -281,27 +283,48 @@ fun ScannerScreen(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 2.dp),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(5.dp)
             ) {
+                // 1. Cài Wi-Fi & Bluetooth BLE
                 Surface(
-                    onClick = { showBatchDialog = true },
+                    onClick = { viewModel.openWifiCameraInitDialog() },
                     shape = RoundedCornerShape(7.dp),
                     color = Color(0xFF0284C7).copy(alpha = 0.12f),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF0284C7).copy(alpha = 0.55f)),
-                    modifier = Modifier.weight(1f).height(30.dp)
+                    modifier = Modifier.weight(1.15f).height(30.dp)
                 ) {
                     Row(
-                        modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp),
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 3.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
                     ) {
-                        Icon(Icons.Default.FlashOn, contentDescription = null, tint = Color(0xFF0284C7), modifier = Modifier.size(13.dp))
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text("Đổi IP loạt", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0284C7), maxLines = 1)
+                        Icon(Icons.Default.Bluetooth, contentDescription = null, tint = Color(0xFF0284C7), modifier = Modifier.size(13.dp))
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text("Cài Wi-Fi/BLE", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF0284C7), maxLines = 1)
                     }
                 }
 
+                // 2. Đổi IP loạt
+                Surface(
+                    onClick = { showBatchDialog = true },
+                    shape = RoundedCornerShape(7.dp),
+                    color = Color(0xFF4F46E5).copy(alpha = 0.10f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF4F46E5).copy(alpha = 0.50f)),
+                    modifier = Modifier.weight(1f).height(30.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Center
+                    ) {
+                        Icon(Icons.Default.FlashOn, contentDescription = null, tint = Color(0xFF4F46E5), modifier = Modifier.size(13.dp))
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text("Đổi IP loạt", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF4F46E5), maxLines = 1)
+                    }
+                }
+
+                // 3. Biên bản giao
                 Surface(
                     onClick = { showHandoverDialog = true },
                     shape = RoundedCornerShape(7.dp),
@@ -310,49 +333,97 @@ fun ScannerScreen(
                     modifier = Modifier.weight(1f).height(30.dp)
                 ) {
                     Row(
-                        modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp),
+                        modifier = Modifier.fillMaxSize().padding(horizontal = 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
                     ) {
-                        Icon(Icons.Default.Description, contentDescription = null, tint = Color(0xFF059669), modifier = Modifier.size(13.dp))
-                        Spacer(modifier = Modifier.width(3.dp))
+                        Icon(Icons.Default.Description, contentDescription = null, tint = Color(0xFF059669), modifier = Modifier.size(12.dp))
+                        Spacer(modifier = Modifier.width(2.dp))
                         Text("Biên bản giao", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF059669), maxLines = 1)
                     }
                 }
 
+                // 4. Dự án
                 Surface(
                     onClick = { showSiteProjectsDialog = true },
                     shape = RoundedCornerShape(7.dp),
                     color = Color(0xFF8B5CF6).copy(alpha = 0.12f),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF8B5CF6).copy(alpha = 0.55f)),
-                    modifier = Modifier.weight(1f).height(30.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxSize().padding(horizontal = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center
-                    ) {
-                        Icon(Icons.Default.FolderSpecial, contentDescription = null, tint = Color(0xFF7C3AED), modifier = Modifier.size(13.dp))
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text("Dự án (${siteProjects.size})", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF7C3AED), maxLines = 1)
-                    }
-                }
-
-                Surface(
-                    onClick = { showGoogleSyncDialog = true },
-                    shape = RoundedCornerShape(7.dp),
-                    color = Color(0xFF4285F4).copy(alpha = 0.12f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF4285F4).copy(alpha = 0.55f)),
-                    modifier = Modifier.weight(0.85f).height(30.dp)
+                    modifier = Modifier.weight(0.9f).height(30.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxSize().padding(horizontal = 2.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Center
                     ) {
-                        Icon(Icons.Default.CloudSync, contentDescription = null, tint = Color(0xFF1A73E8), modifier = Modifier.size(13.dp))
-                        Spacer(modifier = Modifier.width(3.dp))
-                        Text("Google", fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1A73E8), maxLines = 1)
+                        Icon(Icons.Default.FolderSpecial, contentDescription = null, tint = Color(0xFF7C3AED), modifier = Modifier.size(12.dp))
+                        Spacer(modifier = Modifier.width(2.dp))
+                        Text("Dự án (${siteProjects.size})", fontSize = 10.5.sp, fontWeight = FontWeight.Bold, color = Color(0xFF7C3AED), maxLines = 1)
+                    }
+                }
+            }
+
+            // Unactivated Devices Warning Banner (Khởi tạo thiết bị)
+            val unactivatedList = remember(devices) { devices.filter { !it.isActivated } }
+            AnimatedVisibility(visible = unactivatedList.isNotEmpty()) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 2.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    color = Color(0xFFD97706).copy(alpha = 0.12f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFD97706))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 8.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.LockOpen,
+                                contentDescription = null,
+                                tint = Color(0xFFD97706),
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Column {
+                                Text(
+                                    text = "Có ${unactivatedList.size} thiết bị chưa kích hoạt!",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFB45309)
+                                )
+                                Text(
+                                    text = "Đặt mật khẩu quản trị và gán dải IP mới.",
+                                    fontSize = 9.5.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                        FilledTonalButton(
+                            onClick = {
+                                if (unactivatedList.size == 1) {
+                                    viewModel.openActivationDialog(unactivatedList.first())
+                                } else {
+                                    viewModel.openBatchActivationDialog()
+                                }
+                            },
+                            colors = ButtonDefaults.filledTonalButtonColors(containerColor = Color(0xFFD97706), contentColor = Color.White),
+                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                            modifier = Modifier.height(26.dp)
+                        ) {
+                            Text(
+                                text = if (unactivatedList.size > 1) "Kích hoạt loạt" else "Kích hoạt",
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
@@ -767,13 +838,49 @@ fun ScannerScreen(
         )
     }
 
-    // Activation Dialog
+    // Activation Dialog (Khởi tạo thiết bị đơn)
     activatingDevice?.let { device ->
         ActivationDialog(
             device = device,
             defaultPassword = defaultPassword,
+            defaultEmail = googleUser.email,
+            suggestedNewIp = viewModel.getSuggestedFreeStartIp(),
+            phoneSubnetMask = wifiInfo.subnetMask,
+            phoneGateway = wifiInfo.gateway,
             onDismiss = { viewModel.closeActivationDialog() },
-            onActivate = { newPassword -> viewModel.activateDevice(device, newPassword) }
+            onActivateWithConfig = { pwd, mail, shouldChangeIp, newIp, isDhcp, syncTime ->
+                viewModel.activateDeviceWithConfig(device, pwd, mail, shouldChangeIp, newIp, isDhcp, syncTime)
+            }
+        )
+    }
+
+    // Batch Activation Dialog (Khởi tạo hàng loạt thiết bị chưa active)
+    if (showBatchActivationDialog) {
+        val unactivatedList = devices.filter { !it.isActivated }
+        BatchActivationDialog(
+            unactivatedDevices = unactivatedList,
+            defaultPassword = defaultPassword,
+            defaultEmail = googleUser.email,
+            suggestedStartIp = viewModel.getSuggestedFreeStartIp(),
+            phoneGateway = wifiInfo.gateway,
+            phoneSubnetMask = wifiInfo.subnetMask,
+            onDismiss = { viewModel.closeBatchActivationDialog() },
+            onApplyBatch = { targets, pwd, mail, startIp, isDhcp ->
+                viewModel.applyBatchActivation(targets, pwd, mail, startIp, isDhcp)
+            }
+        )
+    }
+
+    // Wi-Fi Camera Initialization Dialog (Bluetooth BLE & SmartConfig)
+    if (showWifiCameraInitDialog) {
+        WifiCameraInitDialog(
+            currentWifiSsid = wifiInfo.ssid,
+            defaultCameraPassword = defaultPassword,
+            onDismiss = { viewModel.closeWifiCameraInitDialog() },
+            onSuccessFinish = {
+                viewModel.closeWifiCameraInitDialog()
+                viewModel.startScanning()
+            }
         )
     }
 

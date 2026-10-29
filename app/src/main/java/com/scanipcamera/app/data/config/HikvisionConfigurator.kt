@@ -175,7 +175,33 @@ class HikvisionConfigurator(
             val packet = DatagramPacket(packetBytes, packetBytes.size, targetAddr, HikvisionSADPScanner.SADP_PORT)
             socket.send(packet)
 
-            Result.success("Đã gửi lệnh kích hoạt camera.")
+            // Broadcast to Hikvision SADP multicast & local broadcast
+            try {
+                val mCast = DatagramPacket(packetBytes, packetBytes.size, InetAddress.getByName("239.255.255.250"), HikvisionSADPScanner.SADP_PORT)
+                socket.send(mCast)
+                val bCast = DatagramPacket(packetBytes, packetBytes.size, InetAddress.getByName("255.255.255.255"), HikvisionSADPScanner.SADP_PORT)
+                socket.send(bCast)
+            } catch (_: Exception) {}
+
+            // Also try ISAPI activation if target IP is valid
+            if (targetIp.isNotBlank() && targetIp != "0.0.0.0") {
+                try {
+                    val url = java.net.URL("http://$targetIp:80/ISAPI/System/activate")
+                    val conn = (url.openConnection() as java.net.HttpURLConnection).apply {
+                        requestMethod = "PUT"
+                        connectTimeout = 1500
+                        readTimeout = 1500
+                        doOutput = true
+                        setRequestProperty("Content-Type", "application/xml; charset=UTF-8")
+                    }
+                    val isapiXml = """<?xml version="1.0" encoding="UTF-8"?><ActivateInfo><password>$newAdminPassword</password></ActivateInfo>"""
+                    conn.outputStream.use { it.write(isapiXml.toByteArray(Charsets.UTF_8)) }
+                    conn.responseCode
+                    conn.disconnect()
+                } catch (_: Exception) {}
+            }
+
+            Result.success("Đã gửi lệnh kích hoạt Hikvision/EZVIZ thành công!")
         } catch (e: Exception) {
             Log.e(TAG, "Hikvision activation failed", e)
             Result.failure(e)

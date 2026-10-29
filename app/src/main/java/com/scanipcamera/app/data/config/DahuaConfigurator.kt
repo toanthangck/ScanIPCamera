@@ -160,14 +160,18 @@ class DahuaConfigurator(
     suspend fun activateDevice(
         macAddress: String,
         targetIp: String,
-        newPassword: String
+        newPassword: String,
+        email: String = "",
+        phone: String = ""
     ): Result<String> = withContext(Dispatchers.IO) {
         // 0. Try official Dahua NetSDK native InitDevAccount
         val netSdkRes = com.scanipcamera.app.data.scanner.DahuaNetSdkManager.initDeviceAccount(
             mac = macAddress,
             targetIp = targetIp,
             username = "admin",
-            password = newPassword
+            password = newPassword,
+            email = email,
+            cellphone = phone
         )
         if (netSdkRes.isSuccess) {
             return@withContext netSdkRes
@@ -186,8 +190,8 @@ class DahuaConfigurator(
                 put("params", JSONObject().apply {
                     put("mac", macAddress)
                     put("pwd", newPassword)
-                    put("cellphone", "")
-                    put("mail", "")
+                    put("cellphone", phone)
+                    put("mail", email)
                 })
             }.toString()
 

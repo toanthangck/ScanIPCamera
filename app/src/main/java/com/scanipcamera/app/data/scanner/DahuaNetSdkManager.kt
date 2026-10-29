@@ -388,7 +388,9 @@ object DahuaNetSdkManager {
         mac: String,
         targetIp: String = "",
         username: String = "admin",
-        password: String
+        password: String,
+        email: String = "",
+        cellphone: String = ""
     ): Result<String> = withContext(Dispatchers.IO) {
         if (!init()) return@withContext Result.failure(Exception("NetSDK chưa được khởi tạo"))
         try {
@@ -400,10 +402,18 @@ object DahuaNetSdkManager {
                 System.arraycopy(userBytes, 0, szUserName, 0, minOf(userBytes.size, szUserName.size))
                 val pwdBytes = password.trim().toByteArray(Charsets.UTF_8)
                 System.arraycopy(pwdBytes, 0, szPwd, 0, minOf(pwdBytes.size, szPwd.size))
+                if (email.isNotBlank()) {
+                    val mailBytes = email.trim().toByteArray(Charsets.UTF_8)
+                    System.arraycopy(mailBytes, 0, szMail, 0, minOf(mailBytes.size, szMail.size))
+                }
+                if (cellphone.isNotBlank()) {
+                    val phoneBytes = cellphone.trim().toByteArray(Charsets.UTF_8)
+                    System.arraycopy(phoneBytes, 0, szCellPhone, 0, minOf(phoneBytes.size, szCellPhone.size))
+                }
             }
             val stuOut = NET_OUT_INIT_DEVICE_ACCOUNT()
             val ipArg = if (targetIp.isNotBlank()) targetIp.trim() else null
-            val ok = INetSDK.InitDevAccount(stuIn, stuOut, 3000, ipArg)
+            val ok = INetSDK.InitDevAccount(stuIn, stuOut, 3500, ipArg)
             if (ok) {
                 Result.success("Kích hoạt thiết bị Dahua/IMOU thành công qua NetSDK!")
             } else {

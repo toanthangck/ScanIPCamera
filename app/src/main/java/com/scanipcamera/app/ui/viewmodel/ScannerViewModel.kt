@@ -154,6 +154,12 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
     private val _showDefaultCredentialsDialog = MutableStateFlow(false)
     val showDefaultCredentialsDialog: StateFlow<Boolean> = _showDefaultCredentialsDialog
 
+    private val _showWifiCameraInitDialog = MutableStateFlow(false)
+    val showWifiCameraInitDialog: StateFlow<Boolean> = _showWifiCameraInitDialog.asStateFlow()
+
+    private val _showBatchActivationDialog = MutableStateFlow(false)
+    val showBatchActivationDialog: StateFlow<Boolean> = _showBatchActivationDialog.asStateFlow()
+
     private val _userMessage = MutableStateFlow<String?>(null)
     val userMessage: StateFlow<String?> = _userMessage
 
@@ -424,11 +430,40 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun openWifiCameraInitDialog() {
+        _showWifiCameraInitDialog.value = true
+    }
+
+    fun closeWifiCameraInitDialog() {
+        _showWifiCameraInitDialog.value = false
+    }
+
+    fun openBatchActivationDialog() {
+        _showBatchActivationDialog.value = true
+    }
+
+    fun closeBatchActivationDialog() {
+        _showBatchActivationDialog.value = false
+    }
+
     fun activateDevice(device: CameraDevice, newPassword: String) {
+        activateDeviceWithConfig(device, newPassword)
+    }
+
+    fun activateDeviceWithConfig(
+        device: CameraDevice,
+        newPassword: String,
+        email: String = "",
+        shouldChangeIp: Boolean = false,
+        newIp: String = "",
+        isDhcp: Boolean = false,
+        syncTime: Boolean = true
+    ) {
         viewModelScope.launch {
+            _userMessage.value = "Đang kích hoạt ${device.model.ifEmpty { device.ipv4Address }}..."
             val result = when (device.brand) {
                 DeviceBrand.DAHUA, DeviceBrand.IMOU, DeviceBrand.KBVISION -> {
-                    dahuaConfigurator.activateDevice(device.macAddress, device.ipv4Address, newPassword)
+                    dahuaConfigurator.activateDevice(device.macAddress, device.ipv4Address, newPassword, email)
                 }
                 else -> {
                     hikvisionConfigurator.activateDevice(device.macAddress, device.ipv4Address, newPassword)
@@ -436,12 +471,90 @@ class ScannerViewModel(application: Application) : AndroidViewModel(application)
             }
 
             result.onSuccess { msg ->
-                _userMessage.value = msg
+                _userMessage.value = "Kích hoạt thành công!"
                 closeActivationDialog()
+
+                // Immediately change IP to avoid default IP conflict (.108 / .64)
+                if (shouldChangeIp && (newIp.isNotBlank() || isDhcp)) {
+                    kotlinx.coroutines.delay(800)
+                    val payload = NetworkConfigPayload(
+                        macAddress = device.macAddress,
+                        newIp = if (isDhcp) device.ipv4Address else newIp,
+                        newSubnetMask = wifiInfo.value.subnetMask.ifEmpty { "255.255.255.0" },
+                        newGateway = wifiInfo.value.gateway.ifEmpty { "192.168.1.1" },
+                        newPort = if (device.httpPort > 0) device.httpPort else 80,
+                        isDhcp = isDhcp,
+                        currentPassword = newPassword
+                    )
+                    applyNetworkConfig(device, payload)
+                }
+
+                // Sync phone time to device
+                if (syncTime) {
+                    kotlinx.coroutines.delay(400)
+                    cameraConfigService.syncCameraTimeToPhone(device, "admin", newPassword)
+                }
+
+                kotlinx.coroutines.delay(1000)
                 startScanning()
             }.onFailure { err ->
                 _userMessage.value = "Kích hoạt thất bại: ${err.message}"
             }
+        }
+    }
+
+    fun applyBatchActivation(
+        targets: List<CameraDevice>,
+        password: String,
+        email: String,
+        startIp: String,
+        isDhcp: Boolean
+    ) {
+        viewModelScope.launch {
+            if (targets.isEmpty()) return@launch
+            var successCount = 0
+            var failCount = 0
+            val total = targets.size
+            _userMessage.value = "Đang kích hoạt hàng loạt $total thiết bị..."
+
+            val prefix = startIp.substringBeforeLast(".", "192.168.1.") + "."
+            val baseNum = startIp.substringAfterLast(".", "201").toIntOrNull() ?: 201
+
+            for ((idx, dev) in targets.withIndex()) {
+                val targetIp = "$prefix${baseNum + idx}"
+                val res = when (dev.brand) {
+                    DeviceBrand.DAHUA, DeviceBrand.IMOU, DeviceBrand.KBVISION -> {
+                        dahuaConfigurator.activateDevice(dev.macAddress, dev.ipv4Address, password, email)
+                    }
+                    else -> {
+                        hikvisionConfigurator.activateDevice(dev.macAddress, dev.ipv4Address, password)
+                    }
+                }
+
+                if (res.isSuccess) {
+                    successCount++
+                    // Immediately re-assign IP sequentially to avoid collision
+                    kotlinx.coroutines.delay(600)
+                    val payload = NetworkConfigPayload(
+                        macAddress = dev.macAddress,
+                        newIp = if (isDhcp) dev.ipv4Address else targetIp,
+                        newSubnetMask = wifiInfo.value.subnetMask.ifEmpty { "255.255.255.0" },
+                        newGateway = wifiInfo.value.gateway.ifEmpty { "192.168.1.1" },
+                        newPort = if (dev.httpPort > 0) dev.httpPort else 80,
+                        isDhcp = isDhcp,
+                        currentPassword = password
+                    )
+                    applyNetworkConfig(dev, payload)
+                    cameraConfigService.syncCameraTimeToPhone(dev, "admin", password)
+                } else {
+                    failCount++
+                }
+            }
+
+            _userMessage.value = "Khởi tạo hoàn tất: $successCount thành công, $failCount thất bại"
+            closeBatchActivationDialog()
+            kotlinx.coroutines.delay(1000)
+            startScanning()
         }
     }
 

@@ -5,7 +5,7 @@ set -e
 APK_PATH="/root/ScanIPCamera/app/build/outputs/apk/debug/app-debug.apk"
 PKG_NAME="com.scanipcamera.app"
 MAIN_ACT="com.scanipcamera.app.MainActivity"
-TARGET_IP="${1:-192.168.1.24}"
+TARGET_IP="${1:-192.168.1.37}"
 
 echo "=== SCANIPCAMERA AUTO-DEPLOY ==="
 
