@@ -55,6 +55,7 @@ class DahuaPlaybackManager {
 
     val isPlaying: Boolean get() = playHandle != 0L
     val isDownloading: Boolean get() = downloadHandle != 0L
+    val isLoggedIn: Boolean get() = loginHandle != 0L
 
     init {
         DahuaNetSdkManager.init()
@@ -115,19 +116,19 @@ class DahuaPlaybackManager {
         IPlaySDK.InitSurface(playPort, surfaceView)
     }
 
-    fun startPlayback(
+    suspend fun startPlayback(
         channel: Int,
         startTime: NET_TIME,
         endTime: NET_TIME,
         surfaceView: SurfaceView,
         onPosUpdate: ((totalSize: Int, currentSize: Int) -> Unit)? = null
-    ): Boolean {
+    ): Boolean = withContext(Dispatchers.IO) {
         if (loginHandle == 0L) {
             Log.e(TAG, "Cannot startPlayback: Not logged in")
-            return false
+            return@withContext false
         }
 
-        stopPlayback()
+        stopPlaybackInternal()
 
         try {
             if (playPort < 0) {
@@ -139,7 +140,7 @@ class DahuaPlaybackManager {
             val openStream = IPlaySDK.PLAYOpenStream(playPort, null, 0, STREAM_BUFFER_SIZE)
             if (openStream == 0) {
                 Log.e(TAG, "PLAYOpenStream failed: ${IPlaySDK.PLAYGetLastError(playPort)}")
-                return false
+                return@withContext false
             }
 
             IPlaySDK.PLAYSetStreamOpenMode(playPort, Constants.STREAME_FILE)
@@ -148,7 +149,7 @@ class DahuaPlaybackManager {
             if (play == 0) {
                 Log.e(TAG, "PLAYPlay failed: ${IPlaySDK.PLAYGetLastError(playPort)}")
                 IPlaySDK.PLAYCloseStream(playPort)
-                return false
+                return@withContext false
             }
 
             IPlaySDK.PLAYSetCacheMode(playPort, 1)
@@ -160,7 +161,7 @@ class DahuaPlaybackManager {
             INetSDK.SetDeviceMode(loginHandle, EM_USEDEV_MODE.SDK_RECORD_TYPE, NET_RECORD_TYPE.NET_RECORD_TYPE_ALL)
 
             val targetPort = playPort
-            this.dataCallback = CB_fDataCallBack { _, dwDataType, buffer, dwBufSize ->
+            this@DahuaPlaybackManager.dataCallback = CB_fDataCallBack { _, dwDataType, buffer, dwBufSize ->
                 if (playHandle != 0L && playPort >= 0 && dwDataType == 0 && buffer != null) {
                     try {
                         IPlaySDK.PLAYInputData(targetPort, buffer, dwBufSize)
@@ -170,7 +171,7 @@ class DahuaPlaybackManager {
                 } else 1
             }
 
-            this.posCallback = CB_fDownLoadPosCallBack { _, total, current ->
+            this@DahuaPlaybackManager.posCallback = CB_fDownLoadPosCallBack { _, total, current ->
                 onPosUpdate?.invoke(total, current)
             }
 
@@ -180,7 +181,7 @@ class DahuaPlaybackManager {
                 Log.e(TAG, "PlayBackByTimeEx failed, err=$err")
                 IPlaySDK.PLAYStop(playPort)
                 IPlaySDK.PLAYCloseStream(playPort)
-                return false
+                return@withContext false
             }
 
             IPlaySDK.PLAYSetPlayedTimeEx(playPort, 0)
@@ -188,41 +189,41 @@ class DahuaPlaybackManager {
             IPlaySDK.PLAYResetBuffer(playPort, 3) // EMPTY_PLAY_QUEUE
 
             Log.d(TAG, "Started playback on channel $channel from $startTime to $endTime")
-            return true
+            true
         } catch (e: Exception) {
             Log.e(TAG, "Exception starting playback", e)
-            return false
+            false
         }
     }
 
-    fun pause(isPause: Boolean): Boolean {
-        if (playHandle == 0L || playPort < 0) return false
+    suspend fun pause(isPause: Boolean): Boolean = withContext(Dispatchers.IO) {
+        if (playHandle == 0L || playPort < 0) return@withContext false
         val pauseShort: Short = if (isPause) 1 else 0
         IPlaySDK.PLAYPause(playPort, pauseShort)
-        return INetSDK.PausePlayBack(playHandle, isPause)
+        INetSDK.PausePlayBack(playHandle, isPause)
     }
 
-    fun fastForward(): Boolean {
-        if (playHandle == 0L || playPort < 0) return false
+    suspend fun fastForward(): Boolean = withContext(Dispatchers.IO) {
+        if (playHandle == 0L || playPort < 0) return@withContext false
         IPlaySDK.PLAYFast(playPort)
-        return INetSDK.FastPlayBack(playHandle)
+        INetSDK.FastPlayBack(playHandle)
     }
 
-    fun slowMotion(): Boolean {
-        if (playHandle == 0L || playPort < 0) return false
+    suspend fun slowMotion(): Boolean = withContext(Dispatchers.IO) {
+        if (playHandle == 0L || playPort < 0) return@withContext false
         IPlaySDK.PLAYSlow(playPort)
-        return INetSDK.SlowPlayBack(playHandle)
+        INetSDK.SlowPlayBack(playHandle)
     }
 
-    fun normalSpeed(surfaceView: SurfaceView): Boolean {
-        if (playHandle == 0L || playPort < 0) return false
+    suspend fun normalSpeed(surfaceView: SurfaceView): Boolean = withContext(Dispatchers.IO) {
+        if (playHandle == 0L || playPort < 0) return@withContext false
         IPlaySDK.PLAYPlay(playPort, surfaceView)
-        return INetSDK.NormalPlayBack(playHandle)
+        INetSDK.NormalPlayBack(playHandle)
     }
 
-    fun getOsdTime(): NET_TIME? {
-        if (playPort < 0 || playHandle == 0L) return null
-        return try {
+    suspend fun getOsdTime(): NET_TIME? = withContext(Dispatchers.IO) {
+        if (playPort < 0 || playHandle == 0L) return@withContext null
+        try {
             val buffer = ByteArray(24)
             if (IPlaySDK.PLAYQueryInfo(playPort, Constants.PLAY_CMD_GetTime, buffer, buffer.size, 0) != 0) {
                 NET_TIME().apply {
@@ -239,15 +240,15 @@ class DahuaPlaybackManager {
         }
     }
 
-    fun captureSnapshot(outputFile: File): Boolean {
-        if (playPort < 0) return false
+    suspend fun captureSnapshot(outputFile: File): Boolean = withContext(Dispatchers.IO) {
+        if (playPort < 0) return@withContext false
         outputFile.parentFile?.mkdirs()
         val ret = IPlaySDK.PLAYCatchPicEx(
             playPort,
             outputFile.absolutePath,
             Constants.PicFormat_JPEG
         )
-        return ret != 0
+        ret != 0
     }
 
     fun startDownload(
@@ -322,7 +323,7 @@ class DahuaPlaybackManager {
         downloadCallback = null
     }
 
-    fun stopPlayback() {
+    private fun stopPlaybackInternal() {
         if (playHandle != 0L) {
             try {
                 INetSDK.StopPlayBack(playHandle)
@@ -346,9 +347,25 @@ class DahuaPlaybackManager {
         posCallback = null
     }
 
-    fun logout() {
+    suspend fun stopPlayback() = withContext(Dispatchers.IO) {
+        stopPlaybackInternal()
+    }
+
+    fun stopPlaybackSync() {
+        stopPlaybackInternal()
+    }
+
+    suspend fun logout() = withContext(Dispatchers.IO) {
+        logoutInternal()
+    }
+
+    fun logoutSync() {
+        logoutInternal()
+    }
+
+    private fun logoutInternal() {
         stopDownload()
-        stopPlayback()
+        stopPlaybackInternal()
         if (loginHandle != 0L) {
             try {
                 INetSDK.Logout(loginHandle)
@@ -370,12 +387,16 @@ class DahuaPlaybackManager {
     /**
      * Query which days of the specified month have recorded video footage.
      */
-    suspend fun queryRecordedDaysInMonth(channel: Int, year: Int, month: Int): Set<Int> = withContext(Dispatchers.IO) {
+    suspend fun queryRecordedDaysInMonth(
+        ip: String,
+        port: Int = 37777,
+        username: String = "admin",
+        password: String = "",
+        channel: Int,
+        year: Int,
+        month: Int
+    ): Set<Int> = withContext(Dispatchers.IO) {
         val recordedDays = mutableSetOf<Int>()
-        if (loginHandle == 0L) {
-            Log.w(TAG, "Cannot query recorded days: Not logged in")
-            return@withContext recordedDays
-        }
 
         val cal = java.util.Calendar.getInstance().apply {
             set(java.util.Calendar.YEAR, year)
@@ -396,15 +417,20 @@ class DahuaPlaybackManager {
 
         // Dedicated search handle to avoid multiplexing collisions on active playback stream
         var searchHandle = 0L
-        if (currentIp.isNotBlank()) {
+        val searchIp = ip.ifBlank { currentIp }
+        val searchPort = if (port > 0) port else currentPort
+        val searchUser = username.ifBlank { currentUsername }
+        val searchPwd = password.ifBlank { currentPassword }
+
+        if (searchIp.isNotBlank()) {
             try {
                 val stuIn = NET_IN_LOGIN_WITH_HIGHLEVEL_SECURITY().apply {
-                    val ipBytes = currentIp.trim().toByteArray(Charsets.UTF_8)
+                    val ipBytes = searchIp.trim().toByteArray(Charsets.UTF_8)
                     System.arraycopy(ipBytes, 0, szIP, 0, minOf(ipBytes.size, szIP.size))
-                    nPort = currentPort
-                    val userBytes = currentUsername.trim().toByteArray(Charsets.UTF_8)
+                    nPort = searchPort
+                    val userBytes = searchUser.trim().toByteArray(Charsets.UTF_8)
                     System.arraycopy(userBytes, 0, szUserName, 0, minOf(userBytes.size, szUserName.size))
-                    val pwdBytes = currentPassword.trim().toByteArray(Charsets.UTF_8)
+                    val pwdBytes = searchPwd.trim().toByteArray(Charsets.UTF_8)
                     System.arraycopy(pwdBytes, 0, szPassword, 0, minOf(pwdBytes.size, szPassword.size))
                     emSpecCap = EM_LOGIN_SPAC_CAP_TYPE.EM_LOGIN_SPEC_CAP_TCP
                 }
@@ -412,7 +438,7 @@ class DahuaPlaybackManager {
                 searchHandle = INetSDK.LoginWithHighLevelSecurity(stuIn, stuOut)
                 if (searchHandle == 0L) {
                     val devInfo = NET_DEVICEINFO_Ex()
-                    searchHandle = INetSDK.LoginEx2(currentIp.trim(), currentPort, currentUsername.trim(), currentPassword.trim(), 0, null, devInfo, 0)
+                    searchHandle = INetSDK.LoginEx2(searchIp.trim(), searchPort, searchUser.trim(), searchPwd.trim(), 0, null, devInfo, 0)
                 }
             } catch (e: Exception) {
                 Log.w(TAG, "Dedicated search handle login failed, using primary handle: ${e.message}")

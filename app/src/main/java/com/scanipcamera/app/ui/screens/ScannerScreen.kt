@@ -88,8 +88,9 @@ fun ScannerScreen(
         }
     }
 
+    Box(modifier = modifier.fillMaxSize()) {
     Scaffold(
-        modifier = modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize(),
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             TopAppBar(
@@ -901,6 +902,10 @@ fun ScannerScreen(
             device = device,
             defaultUser = defaultUser,
             defaultPassword = defaultPassword,
+            onOpenPlayback = { channel ->
+                viewModel.closeLiveViewDialog()
+                viewModel.openPlaybackDialog(device)
+            },
             onDismiss = { viewModel.closeLiveViewDialog() }
         )
     }
@@ -1075,6 +1080,7 @@ fun ScannerScreen(
                 viewModel.updateDefaultCredentials(u, camP, nvrP)
             }
         )
+    }
     }
 }
 

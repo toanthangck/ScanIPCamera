@@ -1,19 +1,18 @@
 package com.scanipcamera.app.ui.components
 
 import android.content.Context
-import android.content.Intent
 import android.media.MediaScannerConnection
-import android.net.Uri
 import android.os.Environment
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -34,8 +33,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.zIndex
 import com.company.NetSDK.NET_TIME
 import com.scanipcamera.app.data.model.CameraDevice
 import com.scanipcamera.app.data.player.DahuaPlaybackManager
@@ -66,9 +64,10 @@ fun DahuaPlaybackDialog(
     var selectedChannel by remember { mutableIntStateOf(initialChannel) }
 
     // Date state (default today)
-    var selectedYear by remember { mutableIntStateOf(Calendar.getInstance().get(Calendar.YEAR)) }
-    var selectedMonth by remember { mutableIntStateOf(Calendar.getInstance().get(Calendar.MONTH) + 1) }
-    var selectedDay by remember { mutableIntStateOf(Calendar.getInstance().get(Calendar.DAY_OF_MONTH)) }
+    val now = Calendar.getInstance()
+    var selectedYear by remember { mutableIntStateOf(now.get(Calendar.YEAR)) }
+    var selectedMonth by remember { mutableIntStateOf(now.get(Calendar.MONTH) + 1) }
+    var selectedDay by remember { mutableIntStateOf(now.get(Calendar.DAY_OF_MONTH)) }
 
     // Recorded days calendar state
     var recordedDays by remember { mutableStateOf<Set<Int>>(emptySet()) }
@@ -76,7 +75,7 @@ fun DahuaPlaybackDialog(
     var showCalendar by remember { mutableStateOf(true) }
 
     // Current seek time in seconds of day (0..86399)
-    var currentSecOfDay by remember { mutableIntStateOf(Calendar.getInstance().get(Calendar.HOUR_OF_DAY) * 3600 + Calendar.getInstance().get(Calendar.MINUTE) * 60) }
+    var currentSecOfDay by remember { mutableIntStateOf(now.get(Calendar.HOUR_OF_DAY) * 3600 + now.get(Calendar.MINUTE) * 60) }
     var isDraggingSlider by remember { mutableStateOf(false) }
 
     var isConnecting by remember { mutableStateOf(true) }
@@ -90,19 +89,6 @@ fun DahuaPlaybackDialog(
     var isDownloading by remember { mutableStateOf(false) }
     var downloadProgress by remember { mutableIntStateOf(0) }
     var downloadStatusText by remember { mutableStateOf<String?>(null) }
-
-    fun loadCalendarForMonth(year: Int, month: Int) {
-        coroutineScope.launch {
-            isLoadingCalendar = true
-            val days = playbackManager.queryRecordedDaysInMonth(selectedChannel, year, month)
-            recordedDays = days
-            isLoadingCalendar = false
-        }
-    }
-
-    LaunchedEffect(selectedYear, selectedMonth, selectedChannel) {
-        loadCalendarForMonth(selectedYear, selectedMonth)
-    }
 
     fun formatTime(sec: Int): String {
         val s = sec.coerceIn(0, 86399)
@@ -134,13 +120,20 @@ fun DahuaPlaybackDialog(
 
         coroutineScope.launch {
             val port = if (device.sdkPort > 0) device.sdkPort else 37777
-            val loginRes = playbackManager.login(device.ipv4Address, port, username, password)
-            if (loginRes.isSuccess) {
-                totalChannels = maxOf(loginRes.getOrDefault(1), totalChannels)
+            val loggedIn = if (!playbackManager.isLoggedIn) {
+                val loginRes = playbackManager.login(device.ipv4Address, port, username, password)
+                if (loginRes.isSuccess) {
+                    totalChannels = maxOf(loginRes.getOrDefault(1), totalChannels)
+                    true
+                } else {
+                    isConnecting = false
+                    isPlaying = false
+                    errorMessage = loginRes.exceptionOrNull()?.message ?: "Đăng nhập thất bại"
+                    false
+                }
+            } else true
 
-                // Query recorded days for this month
-                loadCalendarForMonth(selectedYear, selectedMonth)
-
+            if (loggedIn) {
                 val startH = currentSecOfDay / 3600
                 val startM = (currentSecOfDay % 3600) / 60
                 val startS = currentSecOfDay % 60
@@ -152,16 +145,43 @@ fun DahuaPlaybackDialog(
                 isConnecting = false
                 isPlaying = ok
                 if (!ok) {
-                    errorMessage = "Không tìm thấy dữ liệu ghi hình ngày %02d/%02d/%04d (CH %d)".format(
-                        selectedDay, selectedMonth, selectedYear, selectedChannel + 1
+                    errorMessage = "Không có video ngày %02d/%02d/%04d lúc %s (CH %d)".format(
+                        selectedDay, selectedMonth, selectedYear, formatTime(currentSecOfDay), selectedChannel + 1
                     )
                 }
-            } else {
-                isConnecting = false
-                isPlaying = false
-                errorMessage = loginRes.exceptionOrNull()?.message ?: "Đăng nhập thất bại"
             }
         }
+    }
+
+    fun loadCalendarForMonth(year: Int, month: Int) {
+        coroutineScope.launch {
+            isLoadingCalendar = true
+            val port = if (device.sdkPort > 0) device.sdkPort else 37777
+            val days = playbackManager.queryRecordedDaysInMonth(
+                ip = device.ipv4Address,
+                port = port,
+                username = username,
+                password = password,
+                channel = selectedChannel,
+                year = year,
+                month = month
+            )
+            recordedDays = days
+            isLoadingCalendar = false
+
+            // Auto-switch to latest recorded day if selected day has no recording
+            if (days.isNotEmpty() && !days.contains(selectedDay)) {
+                days.maxOrNull()?.let { latestDay ->
+                    selectedDay = latestDay
+                    currentSecOfDay = 0
+                    startPlaybackFromCurrentTime()
+                }
+            }
+        }
+    }
+
+    LaunchedEffect(selectedYear, selectedMonth, selectedChannel) {
+        loadCalendarForMonth(selectedYear, selectedMonth)
     }
 
     // Polling OSD time to update timeline slider
@@ -178,27 +198,40 @@ fun DahuaPlaybackDialog(
 
     DisposableEffect(Unit) {
         onDispose {
-            playbackManager.logout()
+            playbackManager.logoutSync()
         }
     }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+    BackHandler {
+        playbackManager.logoutSync()
+        onDismiss()
+    }
+
+    // In-Activity Modal Overlay (Avoids MediaTek Dialog-SurfaceView crash)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.75f))
+            .zIndex(150f)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) { /* Keep open when tapping backdrop scrim */ },
+        contentAlignment = Alignment.Center
     ) {
         Surface(
             modifier = Modifier
                 .fillMaxWidth(0.96f)
-                .fillMaxHeight(0.94f),
-            shape = RoundedCornerShape(12.dp),
+                .fillMaxHeight(0.96f),
+            shape = RoundedCornerShape(14.dp),
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 6.dp
         ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(12.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
+                    .padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 // Header
                 Row(
@@ -214,34 +247,41 @@ fun DahuaPlaybackDialog(
                             modifier = Modifier.size(20.dp)
                         )
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Xem lại ghi hình: ${device.ipv4Address}",
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp
-                        )
+                        Column {
+                            Text(
+                                text = "Xem lại ghi hình: ${device.ipv4Address}",
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.5.sp
+                            )
+                            Text(
+                                text = "Ngày: %02d/%02d/%04d • Đang phát: %s".format(
+                                    selectedDay, selectedMonth, selectedYear, formatTime(currentSecOfDay)
+                                ),
+                                fontSize = 10.5.sp,
+                                fontFamily = FontFamily.Monospace,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
                     }
                     IconButton(
-                        onClick = onDismiss,
-                        modifier = Modifier.size(28.dp)
+                        onClick = {
+                            playbackManager.logoutSync()
+                            onDismiss()
+                        },
+                        modifier = Modifier.size(30.dp)
                     ) {
-                        Icon(Icons.Default.Close, contentDescription = "Đóng", modifier = Modifier.size(18.dp))
+                        Icon(Icons.Default.Close, contentDescription = "Đóng", modifier = Modifier.size(19.dp))
                     }
                 }
 
-                Text(
-                    text = "Ngày: %04d-%02d-%02d • Đang xem: %s".format(selectedYear, selectedMonth, selectedDay, formatTime(currentSecOfDay)),
-                    fontSize = 11.sp,
-                    fontFamily = FontFamily.Monospace,
-                    color = MaterialTheme.colorScheme.primary
-                )
+                Spacer(modifier = Modifier.height(2.dp))
 
-                Spacer(modifier = Modifier.height(6.dp))
-
-                // SurfaceView Box
+                // Fixed Video Box (16:9 ratio, height 180.dp)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(210.dp)
+                        .height(180.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(Color.Black),
                     contentAlignment = Alignment.Center
@@ -259,7 +299,7 @@ fun DahuaPlaybackDialog(
                                     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {}
 
                                     override fun surfaceDestroyed(holder: SurfaceHolder) {
-                                        playbackManager.stopPlayback()
+                                        playbackManager.stopPlaybackSync()
                                     }
                                 })
                             }
@@ -270,348 +310,415 @@ fun DahuaPlaybackDialog(
                     // Overlay when connecting or error
                     if (isConnecting) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(28.dp), strokeWidth = 2.5.dp)
-                            Spacer(modifier = Modifier.height(6.dp))
+                            CircularProgressIndicator(color = Color.White, modifier = Modifier.size(26.dp), strokeWidth = 2.5.dp)
+                            Spacer(modifier = Modifier.height(5.dp))
                             Text("Đang tải dữ liệu ghi hình...", color = Color.White, fontSize = 11.sp)
                         }
                     } else if (errorMessage != null) {
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.padding(16.dp)
+                            modifier = Modifier.padding(12.dp)
                         ) {
-                            Text(errorMessage ?: "", color = MaterialTheme.colorScheme.errorContainer, fontSize = 11.5.sp, fontWeight = FontWeight.SemiBold)
-                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(errorMessage ?: "", color = MaterialTheme.colorScheme.errorContainer, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                            Spacer(modifier = Modifier.height(4.dp))
                             Button(
                                 onClick = { startPlaybackFromCurrentTime() },
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                modifier = Modifier.height(30.dp)
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 2.dp),
+                                modifier = Modifier.height(28.dp)
                             ) {
-                                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(14.dp))
+                                Icon(Icons.Default.Refresh, contentDescription = null, modifier = Modifier.size(13.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Thử lại", fontSize = 11.sp)
+                                Text("Thử lại", fontSize = 10.5.sp)
                             }
                         }
                     }
                 }
 
-                Spacer(modifier = Modifier.height(2.dp))
-
-                // Scrollable Controls and Calendar (SurfaceView is isolated above)
+                // Scrollable Controls & Calendar below video
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
                         .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     // Timeline Seekbar (00:00:00 -> 23:59:59)
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                    Text(
-                        text = formatTime(currentSecOfDay),
-                        fontSize = 11.sp,
-                        fontFamily = FontFamily.Monospace,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.width(55.dp)
-                    )
-                    Slider(
-                        value = currentSecOfDay.toFloat(),
-                        onValueChange = {
-                            isDraggingSlider = true
-                            currentSecOfDay = it.toInt()
-                        },
-                        onValueChangeFinished = {
-                            isDraggingSlider = false
-                            startPlaybackFromCurrentTime()
-                        },
-                        valueRange = 0f..86399f,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text(
-                        text = "23:59",
-                        fontSize = 10.sp,
-                        fontFamily = FontFamily.Monospace,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                // Playback Control Buttons (Pause/Play, Fast, Slow, Snapshot, Download)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Play / Pause
-                    FilledTonalIconButton(
-                        onClick = {
-                            if (isPlaying) {
-                                val nextPause = !isPaused
-                                playbackManager.pause(nextPause)
-                                isPaused = nextPause
-                            } else {
+                        Text(
+                            text = formatTime(currentSecOfDay),
+                            fontSize = 10.5.sp,
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.width(52.dp)
+                        )
+                        Slider(
+                            value = currentSecOfDay.toFloat(),
+                            onValueChange = {
+                                isDraggingSlider = true
+                                currentSecOfDay = it.toInt()
+                            },
+                            onValueChangeFinished = {
+                                isDraggingSlider = false
                                 startPlaybackFromCurrentTime()
-                            }
-                        },
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(
-                            imageVector = if (isPaused || !isPlaying) Icons.Default.PlayArrow else Icons.Default.Pause,
-                            contentDescription = if (isPaused) "Phát" else "Tạm dừng",
-                            modifier = Modifier.size(20.dp)
+                            },
+                            valueRange = 0f..86399f,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(
+                            text = "23:59",
+                            fontSize = 9.5.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
 
-                    // Slow 1/2x
-                    FilledTonalButton(
-                        onClick = {
-                            if (playbackManager.slowMotion()) {
-                                currentSpeedText = "1/2x"
-                            }
-                        },
-                        contentPadding = PaddingValues(horizontal = 8.dp),
-                        modifier = Modifier.height(34.dp)
+                    // Playback Control Buttons (Pause/Play, Fast, Slow, Snapshot, Download)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("1/2x", fontSize = 10.5.sp)
-                    }
-
-                    // Normal 1x
-                    FilledTonalButton(
-                        onClick = {
-                            surfaceViewRef?.let {
-                                if (playbackManager.normalSpeed(it)) {
-                                    currentSpeedText = "1x"
+                        // Play / Pause
+                        FilledTonalIconButton(
+                            onClick = {
+                                if (isPlaying) {
+                                    val nextPause = !isPaused
+                                    isPaused = nextPause
+                                    coroutineScope.launch {
+                                        playbackManager.pause(nextPause)
+                                    }
+                                } else {
+                                    startPlaybackFromCurrentTime()
                                 }
-                            }
-                        },
-                        contentPadding = PaddingValues(horizontal = 8.dp),
-                        modifier = Modifier.height(34.dp)
-                    ) {
-                        Text(currentSpeedText, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
-                    }
+                            },
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isPaused || !isPlaying) Icons.Default.PlayArrow else Icons.Default.Pause,
+                                contentDescription = if (isPaused) "Phát" else "Tạm dừng",
+                                modifier = Modifier.size(19.dp)
+                            )
+                        }
 
-                    // Fast 2x/4x
-                    FilledTonalButton(
-                        onClick = {
-                            if (playbackManager.fastForward()) {
-                                currentSpeedText = if (currentSpeedText == "2x") "4x" else "2x"
-                            }
-                        },
-                        contentPadding = PaddingValues(horizontal = 8.dp),
-                        modifier = Modifier.height(34.dp)
-                    ) {
-                        Icon(Icons.Default.FastForward, contentDescription = "Tua nhanh", modifier = Modifier.size(14.dp))
-                    }
+                        // Slow 1/2x
+                        FilledTonalButton(
+                            onClick = {
+                                coroutineScope.launch {
+                                    if (playbackManager.slowMotion()) {
+                                        currentSpeedText = "1/2x"
+                                    }
+                                }
+                            },
+                            contentPadding = PaddingValues(horizontal = 7.dp),
+                            modifier = Modifier.height(32.dp)
+                        ) {
+                            Text("1/2x", fontSize = 10.sp)
+                        }
 
-                    // Snapshot from Playback
-                    FilledTonalIconButton(
-                        onClick = {
-                            val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-                            val storageDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "ScanIPCamera")
-                            val picFile = File(storageDir, "Playback_${device.ipv4Address}_${timeStamp}.jpg")
-                            val ok = playbackManager.captureSnapshot(picFile)
-                            if (ok) {
-                                MediaScannerConnection.scanFile(context, arrayOf(picFile.absolutePath), arrayOf("image/jpeg"), null)
-                                Toast.makeText(context, "Đã lưu ảnh xem lại: ${picFile.name}", Toast.LENGTH_SHORT).show()
-                            } else {
-                                Toast.makeText(context, "Chụp ảnh xem lại thất bại", Toast.LENGTH_SHORT).show()
-                            }
-                        },
-                        modifier = Modifier.size(36.dp)
-                    ) {
-                        Icon(Icons.Default.CameraAlt, contentDescription = "Chụp ảnh", modifier = Modifier.size(18.dp))
-                    }
-
-                    // Download Record Segment (5-minute segment from current seek time)
-                    FilledTonalButton(
-                        onClick = {
-                            if (isDownloading) {
-                                playbackManager.stopDownload()
-                                isDownloading = false
-                                downloadStatusText = "Đã hủy tải video"
-                            } else {
-                                isDownloading = true
-                                downloadProgress = 0
-                                downloadStatusText = "Đang tải đoạn video..."
-
-                                val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-                                val moviesDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "ScanIPCamera")
-                                val recFile = File(moviesDir, "Record_CH${selectedChannel + 1}_${timeStamp}.dav")
-
-                                val startH = currentSecOfDay / 3600
-                                val startM = (currentSecOfDay % 3600) / 60
-                                val startS = currentSecOfDay % 60
-                                val endSec = minOf(currentSecOfDay + 300, 86399) // 5 minutes segment
-                                val endH = endSec / 3600
-                                val endM = (endSec % 3600) / 60
-                                val endS = endSec % 60
-
-                                val sTime = makeNetTime(startH, startM, startS)
-                                val eTime = makeNetTime(endH, endM, endS)
-
-                                playbackManager.startDownload(
-                                    channel = selectedChannel,
-                                    startTime = sTime,
-                                    endTime = eTime,
-                                    outputFile = recFile,
-                                    onProgress = { pct -> downloadProgress = pct },
-                                    onFinished = { success, msg ->
-                                        isDownloading = false
-                                        downloadStatusText = msg
-                                        if (success) {
-                                            MediaScannerConnection.scanFile(context, arrayOf(recFile.absolutePath), null, null)
-                                            Toast.makeText(context, "Đã tải đoạn video về máy: ${recFile.name}", Toast.LENGTH_LONG).show()
-                                        } else {
-                                            Toast.makeText(context, msg ?: "Lỗi tải video", Toast.LENGTH_SHORT).show()
+                        // Normal 1x
+                        FilledTonalButton(
+                            onClick = {
+                                surfaceViewRef?.let { sv ->
+                                    coroutineScope.launch {
+                                        if (playbackManager.normalSpeed(sv)) {
+                                            currentSpeedText = "1x"
                                         }
                                     }
+                                }
+                            },
+                            contentPadding = PaddingValues(horizontal = 7.dp),
+                            modifier = Modifier.height(32.dp)
+                        ) {
+                            Text(currentSpeedText, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                        }
+
+                        // Fast 2x/4x
+                        FilledTonalButton(
+                            onClick = {
+                                coroutineScope.launch {
+                                    if (playbackManager.fastForward()) {
+                                        currentSpeedText = if (currentSpeedText == "2x") "4x" else "2x"
+                                    }
+                                }
+                            },
+                            contentPadding = PaddingValues(horizontal = 7.dp),
+                            modifier = Modifier.height(32.dp)
+                        ) {
+                            Icon(Icons.Default.FastForward, contentDescription = "Tua nhanh", modifier = Modifier.size(13.dp))
+                        }
+
+                        // Snapshot
+                        FilledTonalIconButton(
+                            onClick = {
+                                coroutineScope.launch {
+                                    val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+                                    val storageDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES), "ScanIPCamera")
+                                    val picFile = File(storageDir, "Playback_${device.ipv4Address}_${timeStamp}.jpg")
+                                    val ok = playbackManager.captureSnapshot(picFile)
+                                    if (ok) {
+                                        MediaScannerConnection.scanFile(context, arrayOf(picFile.absolutePath), arrayOf("image/jpeg"), null)
+                                        Toast.makeText(context, "Đã lưu ảnh xem lại: ${picFile.name}", Toast.LENGTH_SHORT).show()
+                                    } else {
+                                        Toast.makeText(context, "Chụp ảnh xem lại thất bại", Toast.LENGTH_SHORT).show()
+                                    }
+                                }
+                            },
+                            modifier = Modifier.size(34.dp)
+                        ) {
+                            Icon(Icons.Default.CameraAlt, contentDescription = "Chụp ảnh", modifier = Modifier.size(17.dp))
+                        }
+
+                        // Download Segment
+                        FilledTonalButton(
+                            onClick = {
+                                if (isDownloading) {
+                                    playbackManager.stopDownload()
+                                    isDownloading = false
+                                    downloadStatusText = "Đã hủy tải video"
+                                } else {
+                                    isDownloading = true
+                                    downloadProgress = 0
+                                    downloadStatusText = "Đang tải đoạn video..."
+
+                                    val timeStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
+                                    val moviesDir = File(Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES), "ScanIPCamera")
+                                    val recFile = File(moviesDir, "Record_CH${selectedChannel + 1}_${timeStamp}.dav")
+
+                                    val startH = currentSecOfDay / 3600
+                                    val startM = (currentSecOfDay % 3600) / 60
+                                    val startS = currentSecOfDay % 60
+                                    val endSec = minOf(currentSecOfDay + 300, 86399) // 5 minutes segment
+                                    val endH = endSec / 3600
+                                    val endM = (endSec % 3600) / 60
+                                    val endS = endSec % 60
+
+                                    val sTime = makeNetTime(startH, startM, startS)
+                                    val eTime = makeNetTime(endH, endM, endS)
+
+                                    playbackManager.startDownload(
+                                        channel = selectedChannel,
+                                        startTime = sTime,
+                                        endTime = eTime,
+                                        outputFile = recFile,
+                                        onProgress = { pct -> downloadProgress = pct },
+                                        onFinished = { success, msg ->
+                                            isDownloading = false
+                                            downloadStatusText = msg
+                                            if (success) {
+                                                MediaScannerConnection.scanFile(context, arrayOf(recFile.absolutePath), null, null)
+                                                Toast.makeText(context, "Đã tải video về máy: ${recFile.name}", Toast.LENGTH_LONG).show()
+                                            } else {
+                                                Toast.makeText(context, msg ?: "Lỗi tải video", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    )
+                                }
+                            },
+                            contentPadding = PaddingValues(horizontal = 7.dp),
+                            modifier = Modifier.height(32.dp),
+                            colors = ButtonDefaults.filledTonalButtonColors(
+                                containerColor = if (isDownloading) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer
+                            )
+                        ) {
+                            Icon(
+                                imageVector = if (isDownloading) Icons.Default.Close else Icons.Default.Download,
+                                contentDescription = null,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(if (isDownloading) "$downloadProgress%" else "Tải đoạn", fontSize = 10.sp)
+                        }
+                    }
+
+                    // Download progress bar
+                    if (isDownloading || downloadStatusText != null) {
+                        if (isDownloading) {
+                            LinearProgressIndicator(
+                                progress = { downloadProgress / 100f },
+                                modifier = Modifier.fillMaxWidth().height(4.dp),
+                            )
+                        }
+                        downloadStatusText?.let {
+                            Text(text = it, fontSize = 9.5.sp, color = MaterialTheme.colorScheme.primary)
+                        }
+                    }
+
+                    // Channels Selector (for NVR/DVR multi-channel)
+                    if (totalChannels > 1) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            for (ch in 0 until totalChannels) {
+                                val isSelected = (selectedChannel == ch)
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = {
+                                        if (selectedChannel != ch) {
+                                            selectedChannel = ch
+                                            startPlaybackFromCurrentTime()
+                                        }
+                                    },
+                                    label = { Text("CH ${ch + 1}", fontSize = 10.sp) },
+                                    modifier = Modifier.height(26.dp)
                                 )
                             }
-                        },
-                        contentPadding = PaddingValues(horizontal = 8.dp),
-                        modifier = Modifier.height(34.dp),
-                        colors = ButtonDefaults.filledTonalButtonColors(
-                            containerColor = if (isDownloading) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.primaryContainer
-                        )
-                    ) {
-                        Icon(
-                            imageVector = if (isDownloading) Icons.Default.Close else Icons.Default.Download,
-                            contentDescription = null,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(if (isDownloading) "$downloadProgress%" else "Tải đoạn", fontSize = 10.5.sp)
+                        }
                     }
-                }
 
-                // Download progress bar
-                if (isDownloading || downloadStatusText != null) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                    if (isDownloading) {
-                        LinearProgressIndicator(
-                            progress = { downloadProgress / 100f },
-                            modifier = Modifier.fillMaxWidth().height(4.dp),
-                        )
-                    }
-                    downloadStatusText?.let {
-                        Text(text = it, fontSize = 10.sp, color = MaterialTheme.colorScheme.primary)
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                // Channels Selector (for NVR/DVR multi-channel)
-                if (totalChannels > 1) {
+                    // 📅 Monthly Record Calendar Header Toggle
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            .clip(RoundedCornerShape(7.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                            .clickable { showCalendar = !showCalendar }
+                            .padding(horizontal = 8.dp, vertical = 5.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        for (ch in 0 until totalChannels) {
-                            val isSelected = (selectedChannel == ch)
-                            FilterChip(
-                                selected = isSelected,
-                                onClick = {
-                                    if (selectedChannel != ch) {
-                                        selectedChannel = ch
-                                        startPlaybackFromCurrentTime()
-                                    }
-                                },
-                                label = { Text("CH ${ch + 1}", fontSize = 10.5.sp) },
-                                modifier = Modifier.height(28.dp)
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.CalendarMonth,
+                                contentDescription = null,
+                                tint = Color(0xFF0284C7),
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "Lịch ghi hình tháng %02d/%04d".format(selectedMonth, selectedYear),
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            if (recordedDays.isNotEmpty()) {
+                                Surface(
+                                    color = Color(0xFF059669),
+                                    shape = RoundedCornerShape(4.dp)
+                                ) {
+                                    Text(
+                                        text = "${recordedDays.size} ngày có video",
+                                        color = Color.White,
+                                        fontSize = 9.5.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 1.dp)
+                                    )
+                                }
+                            }
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            if (isLoadingCalendar) {
+                                CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 1.5.dp)
+                                Spacer(modifier = Modifier.width(4.dp))
+                            }
+                            Icon(
+                                imageVector = if (showCalendar) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                                contentDescription = null,
+                                modifier = Modifier.size(17.dp)
                             )
                         }
                     }
-                    Spacer(modifier = Modifier.height(4.dp))
-                }
 
-                // 📅 Monthly Record Calendar Section
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                        .clickable { showCalendar = !showCalendar }
-                        .padding(horizontal = 10.dp, vertical = 7.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = Icons.Default.CalendarMonth,
-                            contentDescription = null,
-                            tint = Color(0xFF0284C7),
-                            modifier = Modifier.size(17.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "Lịch ghi hình tháng %02d/%04d (%s)".format(
-                                selectedMonth, selectedYear,
-                                if (recordedDays.isNotEmpty()) "${recordedDays.size} ngày có video" else "Đang quét..."
-                            ),
-                            fontSize = 11.5.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        if (isLoadingCalendar) {
-                            CircularProgressIndicator(modifier = Modifier.size(13.dp), strokeWidth = 1.5.dp)
-                            Spacer(modifier = Modifier.width(6.dp))
-                        }
-                        Icon(
-                            imageVector = if (showCalendar) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                    }
-                }
+                    AnimatedVisibility(visible = showCalendar) {
+                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            MonthRecordCalendar(
+                                year = selectedYear,
+                                month = selectedMonth,
+                                selectedDay = selectedDay,
+                                recordedDays = recordedDays,
+                                isLoading = isLoadingCalendar,
+                                onPreviousMonth = {
+                                    if (selectedMonth == 1) {
+                                        selectedMonth = 12
+                                        selectedYear -= 1
+                                    } else {
+                                        selectedMonth -= 1
+                                    }
+                                    loadCalendarForMonth(selectedYear, selectedMonth)
+                                },
+                                onNextMonth = {
+                                    if (selectedMonth == 12) {
+                                        selectedMonth = 1
+                                        selectedYear += 1
+                                    } else {
+                                        selectedMonth += 1
+                                    }
+                                    loadCalendarForMonth(selectedYear, selectedMonth)
+                                },
+                                onSelectDay = { day ->
+                                    selectedDay = day
+                                    // Start from beginning of that day
+                                    currentSecOfDay = 0
+                                    startPlaybackFromCurrentTime()
+                                }
+                            )
 
-                AnimatedVisibility(visible = showCalendar) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        MonthRecordCalendar(
-                            year = selectedYear,
-                            month = selectedMonth,
-                            selectedDay = selectedDay,
-                            recordedDays = recordedDays,
-                            isLoading = isLoadingCalendar,
-                            onPreviousMonth = {
-                                if (selectedMonth == 1) {
-                                    selectedMonth = 12
-                                    selectedYear -= 1
-                                } else {
-                                    selectedMonth -= 1
+                            // Visual Legend
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 4.dp, vertical = 2.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(width = 12.dp, height = 12.dp)
+                                            .clip(RoundedCornerShape(3.dp))
+                                            .background(Color(0xFFE0F2FE))
+                                            .border(1.5.dp, Color(0xFF0284C7), RoundedCornerShape(3.dp))
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Tô đậm: Có video",
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF0369A1)
+                                    )
                                 }
-                                loadCalendarForMonth(selectedYear, selectedMonth)
-                            },
-                            onNextMonth = {
-                                if (selectedMonth == 12) {
-                                    selectedMonth = 1
-                                    selectedYear += 1
-                                } else {
-                                    selectedMonth += 1
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(width = 12.dp, height = 12.dp)
+                                            .clip(RoundedCornerShape(3.dp))
+                                            .background(Color(0xFF0284C7))
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Đang chọn",
+                                        fontSize = 9.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF0284C7)
+                                    )
                                 }
-                                loadCalendarForMonth(selectedYear, selectedMonth)
-                            },
-                            onSelectDay = { day ->
-                                selectedDay = day
-                                startPlaybackFromCurrentTime()
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(6.dp)
+                                            .clip(CircleShape)
+                                            .background(Color(0xFF16A34A))
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Chấm xanh: File ghi",
+                                        fontSize = 9.sp,
+                                        color = Color(0xFF16A34A)
+                                    )
+                                }
                             }
-                        )
-                        Text(
-                            text = "💡 Ngày được tô đậm và có chấm xanh là ngày có file ghi hình trên thiết bị.",
-                            fontSize = 9.5.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 2.dp)
-                        )
+                        }
                     }
                 }
             }
         }
     }
-}
 }
 
 @Composable
@@ -646,7 +753,7 @@ private fun MonthRecordCalendar(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(8.dp)
+                .padding(6.dp)
         ) {
             // Month Header & Navigation
             Row(
@@ -656,40 +763,46 @@ private fun MonthRecordCalendar(
             ) {
                 IconButton(
                     onClick = onPreviousMonth,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(26.dp)
                 ) {
-                    Icon(Icons.Default.ChevronLeft, contentDescription = "Tháng trước", modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.ChevronLeft, contentDescription = "Tháng trước", modifier = Modifier.size(19.dp))
                 }
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
                         text = "Tháng %02d / %04d".format(month, year),
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.5.sp
+                        fontSize = 12.sp
                     )
                     if (isLoading) {
                         Spacer(modifier = Modifier.width(6.dp))
                         CircularProgressIndicator(modifier = Modifier.size(11.dp), strokeWidth = 1.5.dp)
                     } else if (recordedDays.isNotEmpty()) {
-                        Spacer(modifier = Modifier.width(4.dp))
-                        Text(
-                            text = "(${recordedDays.size} ngày có ghi)",
-                            fontSize = 10.sp,
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Surface(
                             color = Color(0xFF059669),
-                            fontWeight = FontWeight.SemiBold
-                        )
+                            shape = RoundedCornerShape(3.dp)
+                        ) {
+                            Text(
+                                text = "${recordedDays.size} ngày có video",
+                                fontSize = 9.sp,
+                                color = Color.White,
+                                fontWeight = FontWeight.ExtraBold,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
                     }
                 }
 
                 IconButton(
                     onClick = onNextMonth,
-                    modifier = Modifier.size(28.dp)
+                    modifier = Modifier.size(26.dp)
                 ) {
-                    Icon(Icons.Default.ChevronRight, contentDescription = "Tháng sau", modifier = Modifier.size(20.dp))
+                    Icon(Icons.Default.ChevronRight, contentDescription = "Tháng sau", modifier = Modifier.size(19.dp))
                 }
             }
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(2.dp))
 
             // Weekday Headers (T2 -> CN)
             Row(
@@ -699,7 +812,7 @@ private fun MonthRecordCalendar(
                 listOf("T2", "T3", "T4", "T5", "T6", "T7", "CN").forEach { dayLabel ->
                     Text(
                         text = dayLabel,
-                        fontSize = 10.sp,
+                        fontSize = 9.5.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         textAlign = TextAlign.Center,
@@ -708,9 +821,9 @@ private fun MonthRecordCalendar(
                 }
             }
 
-            Spacer(modifier = Modifier.height(3.dp))
+            Spacer(modifier = Modifier.height(2.dp))
 
-            // Calendar Grid
+            // Calendar Grid: Bold highlighting for recorded days
             for (row in 0 until totalRows) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -726,44 +839,55 @@ private fun MonthRecordCalendar(
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .padding(horizontal = 2.dp, vertical = 2.5.dp)
+                                    .padding(horizontal = 1.5.dp, vertical = 2.dp)
                                     .clip(RoundedCornerShape(6.dp))
                                     .background(
                                         when {
-                                            isSelected -> MaterialTheme.colorScheme.primary
-                                            hasRecord -> Color(0xFF0284C7).copy(alpha = 0.22f)
+                                            isSelected && hasRecord -> Color(0xFF0284C7)
+                                            isSelected && !hasRecord -> MaterialTheme.colorScheme.primary
+                                            hasRecord -> Color(0xFFE0F2FE) // Tô đậm: Nền xanh sáng rõ nét
                                             else -> Color.Transparent
                                         }
                                     )
                                     .then(
-                                        if (hasRecord && !isSelected) {
-                                            Modifier.border(1.2.dp, Color(0xFF0284C7).copy(alpha = 0.7f), RoundedCornerShape(6.dp))
-                                        } else Modifier
+                                        when {
+                                            hasRecord && !isSelected -> Modifier.border(
+                                                width = 2.dp,
+                                                color = Color(0xFF0284C7), // Tô đậm: Viền xanh đậm nổi bật
+                                                shape = RoundedCornerShape(6.dp)
+                                            )
+                                            isSelected && hasRecord -> Modifier.border(
+                                                width = 1.5.dp,
+                                                color = Color(0xFFFDE047), // Viền vàng nổi bật khi đang chọn ngày có video
+                                                shape = RoundedCornerShape(6.dp)
+                                            )
+                                            else -> Modifier
+                                        }
                                     )
                                     .clickable { onSelectDay(dayNum) }
-                                    .padding(vertical = 4.dp),
+                                    .padding(vertical = 3.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                                     Text(
                                         text = "$dayNum",
-                                        fontSize = if (hasRecord) 12.sp else 11.sp,
+                                        fontSize = if (hasRecord) 12.5.sp else 11.sp,
                                         fontWeight = if (hasRecord) FontWeight.Black else if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                         color = when {
                                             isSelected -> Color.White
-                                            hasRecord -> Color(0xFF0369A1)
-                                            else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f)
+                                            hasRecord -> Color(0xFF0369A1) // Chữ số đậm màu xanh sắc nét
+                                            else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.32f)
                                         }
                                     )
                                     if (hasRecord) {
                                         Box(
                                             modifier = Modifier
-                                                .size(4.dp)
-                                                .clip(CircleShape)
-                                                .background(if (isSelected) Color.White else Color(0xFF16A34A))
+                                                .size(width = 12.dp, height = 3.5.dp)
+                                                .clip(RoundedCornerShape(2.dp))
+                                                .background(if (isSelected) Color(0xFF86EFAC) else Color(0xFF16A34A))
                                         )
                                     } else {
-                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Spacer(modifier = Modifier.height(3.5.dp))
                                     }
                                 }
                             }

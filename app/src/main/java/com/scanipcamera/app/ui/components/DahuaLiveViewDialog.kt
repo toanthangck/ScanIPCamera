@@ -7,9 +7,12 @@ import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -33,8 +36,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.zIndex
 import com.company.NetSDK.SDK_EXTPTZ_ControlType
 import com.company.NetSDK.SDK_PTZ_ControlType
 import com.scanipcamera.app.data.model.CameraDevice
@@ -53,6 +55,7 @@ fun DahuaLiveViewDialog(
     device: CameraDevice,
     defaultUser: String = "admin",
     defaultPassword: String = "",
+    onOpenPlayback: (channel: Int) -> Unit = {},
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -74,7 +77,6 @@ fun DahuaLiveViewDialog(
     var surfaceViewRef by remember { mutableStateOf<SurfaceView?>(null) }
 
     // Sub-dialogs & panels
-    var showPlaybackDialog by remember { mutableStateOf(false) }
     var showPtzPanel by remember { mutableStateOf(false) }
     var isTalking by remember { mutableStateOf(false) }
     var ptzSpeed by remember { mutableIntStateOf(4) } // 1..8
@@ -154,22 +156,22 @@ fun DahuaLiveViewDialog(
         }
     }
 
-    if (showPlaybackDialog) {
-        DahuaPlaybackDialog(
-            device = device,
-            defaultUser = username,
-            defaultPassword = password,
-            initialChannel = selectedChannel,
-            onDismiss = {
-                showPlaybackDialog = false
-                connectAndPlay(selectedChannel, isSubStream)
-            }
-        )
+    BackHandler {
+        talkManager.stopTalk()
+        player.logout()
+        onDismiss()
     }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.72f))
+            .zIndex(140f)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null
+            ) {},
+        contentAlignment = Alignment.Center
     ) {
         Surface(
             modifier = Modifier
@@ -314,8 +316,9 @@ fun DahuaLiveViewDialog(
                     // 2. Playback Button
                     FilledTonalButton(
                         onClick = {
-                            player.stopPlay()
-                            showPlaybackDialog = true
+                            talkManager.stopTalk()
+                            player.logout()
+                            onOpenPlayback(selectedChannel)
                         },
                         contentPadding = PaddingValues(horizontal = 8.dp),
                         modifier = Modifier.height(32.dp),
